@@ -1,11 +1,14 @@
-const Listing = require("../Models/Listing1");
+const ProListing = require("../Models/Prolisting");
 
-// Create a new listing
+// Create a new pro listing (auto-delete after 3 minutes)
 exports.createProListing = async (req, res) => {
   const { title, price, condition, description, images, contactMethod, sellerInfo, postedTime } = req.body;
 
   try {
-    const listing = await Listing.create({
+    // Set expiresAt to 3 minutes from now
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    const listing = await ProListing.create({
       title,
       price,
       condition,
@@ -13,74 +16,75 @@ exports.createProListing = async (req, res) => {
       images,
       contactMethod,
       postedTime,
-      sellerInfo
+      sellerInfo,
+      expiresAt
     });
 
-    res.status(201).json({ message: "Listing created successfully", listing });
+    res.status(201).json({ message: "Pro Listing created successfully", listing });
   } catch (error) {
-    res.status(500).json({ message: "Failed to create listing", error });
+    res.status(500).json({ message: "Failed to create pro listing", error });
   }
 };
 
-// Get all listings
+// Get all pro listings
 exports.getProListings = async (req, res) => {
   try {
-    const listings = await Listing.find() // Populate seller's email
+    const listings = await ProListing.find();
     res.status(200).json(listings);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch listings", error });
+    res.status(500).json({ message: "Failed to fetch pro listings", error });
   }
 };
 
-// Get a single listing by ID
+// Get a single pro listing by ID
 exports.getProListingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await Listing.findById(id).populate("seller", "email");
+    const listing = await ProListing.findById(id).populate("seller", "email");
     if (!listing) {
-      return res.status(404).json({ message: "Listing not found" });
+      return res.status(404).json({ message: "Pro Listing not found" });
     }
     res.status(200).json(listing);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch listing", error });
+    res.status(500).json({ message: "Failed to fetch pro listing", error });
   }
 };
 
-// Update a listing
+// Update a pro listing
 exports.updateProListing = async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
   try {
-    const listing = await Listing.findByIdAndUpdate(id, updates, {
+    const listing = await ProListing.findByIdAndUpdate(id, updates, {
       new: true, // Return the updated document
       runValidators: true, // Ensure validations are applied
     });
 
     if (!listing) {
-      return res.status(404).json({ message: "Listing not found" });
+      return res.status(404).json({ message: "Pro Listing not found" });
     }
 
-    res.status(200).json({ message: "Listing updated successfully", listing });
+    res.status(200).json({ message: "Pro Listing updated successfully", listing });
   } catch (error) {
-    res.status(500).json({ message: "Failed to update listing", error });
+    res.status(500).json({ message: "Failed to update pro listing", error });
   }
 };
 
-// Delete a listing
+// Delete a pro listing
 exports.deleteProListing = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await Listing.findByIdAndDelete(id);
+    const listing = await ProListing.findByIdAndDelete(id);
 
     if (!listing) {
-      return res.status(404).json({ message: "Listing not found" });
+      return res.status(404).json({ message: "Pro Listing not found" });
     }
 
-    res.status(200).json({ message: "Listing deleted successfully" });
+    res.status(200).json({ message: "Pro Listing deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete listing", error });
+    res.status(500).json({ message: "Failed to delete pro listing", error });
   }
 };

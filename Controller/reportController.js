@@ -2,14 +2,16 @@ const Report = require("../Models/Report");
 
 // Create a new contact request
 exports.createReport = async (req, res) => {
-  const { name, email, message } = req.body;
+  const {  scamType,
+      description,
+      contactInfo,
+    } = req.body;
 
   try {
     const report = await Report.create({
-      scam,
-      Description,
+      scamType,
+      description,
       contactInfo,
-      image,
     });
 
     res.status(201).json({ message: "Contact request created successfully", report});

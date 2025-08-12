@@ -37,7 +37,7 @@ app.use("/api/report", reportRoutes); // Add report routes
 
 app.use(cors(
    {
-      origin:["http://localhost:3000/"],
+      origin:["http://localhost:3000/","https://campuscrave-lu04.onrender.com"],
       methods: ["GET", "POST","PUT","DELETE"],
       credentials: true
    }

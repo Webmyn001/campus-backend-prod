@@ -13,7 +13,7 @@ function formatDateTime(date) {
   return new Intl.DateTimeFormat("en-GB", options).format(date).replace(",", "");
 }
 
-const listingSchema = new mongoose.Schema({
+const ProlistingSchema = new mongoose.Schema({
   title: {
     type: String,
     required: [true, "Title is required"],
@@ -47,31 +47,30 @@ const listingSchema = new mongoose.Schema({
     type: Object, // Seller information
     required: [true, "Seller info is required"],
   },
-  createdAt: {
+  expiresAt: {
     type: Date,
-    default: Date.now,
-    index: { expires: "10s" }, // Automatically delete 24 hours after creation
+    required: true,
+    index: { expires: 0 }, // TTL index: delete when now > expiresAt
   },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")
-listingSchema.virtual("formattedPostedAt").get(function () {
+ProlistingSchema.virtual("formattedPostedAt").get(function () {
   return formatDateTime(this.postedAt);
 });
 
-// Virtual field to calculate hours left until deletion
-listingSchema.virtual("hourLeft").get(function () {
+// Virtual field to calculate seconds left until deletion
+ProlistingSchema.virtual("secondsLeft").get(function () {
   const now = new Date();
-  const expiryTime = new Date(this.createdAt.getTime() + 24 * 60 * 60 * 1000); // Add 24 hours to createdAt
+  const expiryTime = this.expiresAt;
   const timeDiff = expiryTime - now; // Difference in milliseconds
-  const hoursLeft = Math.max(0, Math.floor(timeDiff / (1000 * 60 * 60))); // Convert to hours, no negative values
-  return hoursLeft;
+  const secondsLeft = Math.max(0, Math.floor(timeDiff / 1000)); // Convert to seconds, no negative values
+  return secondsLeft;
 });
 
-// Ensure virtual fields are included in the output (e.g., when converting to JSON)
-listingSchema.set("toJSON", { virtuals: true });
-listingSchema.set("toObject", { virtuals: true });
+ProlistingSchema.set("toJSON", { virtuals: true });
+ProlistingSchema.set("toObject", { virtuals: true });
 
-const Listing = mongoose.model("Listing", listingSchema);
+const ProListing = mongoose.model("ProListing", ProlistingSchema);
 
-module.exports = Listing;
+module.exports = ProListing;

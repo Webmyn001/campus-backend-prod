@@ -1,10 +1,13 @@
 const Listing = require("../Models/Listing1");
 
-// Create a new listing
+// Create a new listing (auto-delete after 3 minutes)
 exports.createListing = async (req, res) => {
   const { title, price, condition, description, images, contactMethod, sellerInfo, postedTime } = req.body;
 
   try {
+    // Set expiresAt to 3 minutes from now
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
     const listing = await Listing.create({
       title,
       price,
@@ -13,7 +16,8 @@ exports.createListing = async (req, res) => {
       images,
       contactMethod,
       postedTime,
-      sellerInfo
+      sellerInfo,
+      expiresAt
     });
 
     res.status(201).json({ message: "Listing created successfully", listing });
@@ -25,7 +29,7 @@ exports.createListing = async (req, res) => {
 // Get all listings
 exports.getAllListings = async (req, res) => {
   try {
-    const listings = await Listing.find() // Populate seller's email
+    const listings = await Listing.find();
     res.status(200).json(listings);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch listings", error });
