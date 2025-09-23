@@ -31,9 +31,12 @@ const ProlistingSchema = new mongoose.Schema({
     required: [true, "Description is required"],
     minlength: [10, "Description must be at least 10 characters long"],
   },
-  images: {
-    type: [String], // Array of image URLs
+  images: [
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, required: true },
   },
+],
   contactMethod: {
     type: String, // Contact method
     required: [true, "Contact method is required"],
@@ -48,10 +51,9 @@ const ProlistingSchema = new mongoose.Schema({
     required: [true, "Seller info is required"],
   },
   expiresAt: {
-    type: Date,
-    required: true,
-    index: { expires: 0 }, // TTL index: delete when now > expiresAt
-  },
+  type: Date,
+  required: true, // keep the field
+},
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")

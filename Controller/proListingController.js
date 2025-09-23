@@ -1,11 +1,22 @@
 const ProListing = require("../Models/Prolisting");
+const cloudinary = require("../config/cloudinary"); // <-- make sure you have this like in listing controller
 
-// Create a new pro listing (auto-delete after 3 minutes)
+// Create a new pro listing (auto-delete after 1 hour)
 exports.createProListing = async (req, res) => {
-  const { title, price, condition, description, images, contactMethod, sellerInfo, postedTime } = req.body;
+  const { title, price, condition, description, contactMethod, sellerInfo, postedTime } = req.body;
 
   try {
-    // Set expiresAt to 3 minutes from now
+    let imageUploads = [];
+    if (req.files && req.files.length > 0) {
+      // Upload images to Cloudinary
+      imageUploads = await Promise.all(
+        req.files.map((file) =>
+          cloudinary.uploader.upload(file.path, { folder: "pro_listings" })
+        )
+      );
+    }
+
+    // Set expiresAt to 1 hour from now
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     const listing = await ProListing.create({
@@ -13,11 +24,14 @@ exports.createProListing = async (req, res) => {
       price,
       condition,
       description,
-      images,
       contactMethod,
       postedTime,
       sellerInfo,
-      expiresAt
+      expiresAt,
+      images: imageUploads.map((img) => ({
+        url: img.secure_url,
+        public_id: img.public_id,
+      })),
     });
 
     res.status(201).json({ message: "Pro Listing created successfully", listing });
@@ -57,16 +71,39 @@ exports.updateProListing = async (req, res) => {
   const updates = req.body;
 
   try {
-    const listing = await ProListing.findByIdAndUpdate(id, updates, {
-      new: true, // Return the updated document
-      runValidators: true, // Ensure validations are applied
-    });
-
+    const listing = await ProListing.findById(id);
     if (!listing) {
       return res.status(404).json({ message: "Pro Listing not found" });
     }
 
-    res.status(200).json({ message: "Pro Listing updated successfully", listing });
+    // If new images uploaded, delete old ones and replace
+    if (req.files && req.files.length > 0) {
+      // Delete old images from Cloudinary
+      if (listing.images && listing.images.length > 0) {
+        await Promise.all(
+          listing.images.map((img) => cloudinary.uploader.destroy(img.public_id))
+        );
+      }
+
+      // Upload new ones
+      const newUploads = await Promise.all(
+        req.files.map((file) =>
+          cloudinary.uploader.upload(file.path, { folder: "pro_listings" })
+        )
+      );
+
+      updates.images = newUploads.map((img) => ({
+        url: img.secure_url,
+        public_id: img.public_id,
+      }));
+    }
+
+    const updatedListing = await ProListing.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.status(200).json({ message: "Pro Listing updated successfully", listing: updatedListing });
   } catch (error) {
     res.status(500).json({ message: "Failed to update pro listing", error });
   }
@@ -81,6 +118,13 @@ exports.deleteProListing = async (req, res) => {
 
     if (!listing) {
       return res.status(404).json({ message: "Pro Listing not found" });
+    }
+
+    // Delete associated images from Cloudinary
+    if (listing.images && listing.images.length > 0) {
+      await Promise.all(
+        listing.images.map((img) => cloudinary.uploader.destroy(img.public_id))
+      );
     }
 
     res.status(200).json({ message: "Pro Listing deleted successfully" });

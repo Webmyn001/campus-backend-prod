@@ -41,7 +41,7 @@ exports.getVIPListingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await VipListing.findById(id).populate("seller", "email");
+    const listing = await VipListing.findById(id)
     if (!listing) {
       return res.status(404).json({ message: "VIP Listing not found" });
     }

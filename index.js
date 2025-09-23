@@ -10,18 +10,21 @@ const reviewRoutes = require("./Routes/reviewRoutes");
 const contactRoutes = require("./Routes/contactRoutes");
 const reportRoutes = require("./Routes/reportRoutes");
 
-
+require("./jobs/cleanupExpiredListings");
 const cors =require("cors") 
 
 
 dotenv.config();
 
 const app = express();
+
+// Increase body size limit to handle base64 images (e.g. up to 10MB)
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
 // Enable CORS for all routes
 app.use(cors());
 
-// Middleware
-app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);

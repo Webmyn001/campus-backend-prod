@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-
 // Utility function to format date and time (YYYY-MM-DD HH:mm)
 function formatDateTime(date) {
   const options = {
@@ -12,60 +11,26 @@ function formatDateTime(date) {
     minute: "2-digit",
     hour12: false,
   };
-  return new Intl.DateTimeFormat("en-GB", options).format(date).replace(",", "");
+  return new Intl.DateTimeFormat("en-GB", options)
+    .format(date)
+    .replace(",", "");
 }
 
-
 const userSchema = new mongoose.Schema({
-
-  
-  name: {
-    type: String,
-  },
-
-  phone: {
-    type: String,
-  },
-
-
-  campusId: {
-    type: String,
-  },
-
+  name: { type: String },
+  phone: { type: String },
+  campusId: { type: String },
   profilePhoto: {
-    type: String,
-  },
-
-  course: {
-    type: String,
-  },
-
-  year: {
-    type: String,
-  },
-
-  hostel: {
-    type: String,
-  },
-
-  status: {
-    type: String,
-  },
-
-  emergencyContact: {
-    type: String,
-  },
-
-  memberSince: {
-    type: Date,
-    default: Date.now, // Automatically set the postedAt field
-    immutable: true, // Prevent this field from being updated after creation
-  },
-  
-  createdAt: {
-    type: Date,
-    default: Date.now, // Automatically set the created date
-  },
+  url: { type: String },
+  public_id: { type: String },
+},
+  course: { type: String },
+  year: { type: String },
+  hostel: { type: String },
+  status: { type: String },
+  emergencyContact: { type: String },
+  memberSince: { type: Date, default: Date.now, immutable: true },
+  createdAt: { type: Date, default: Date.now },
 
   email: {
     type: String,
@@ -73,31 +38,43 @@ const userSchema = new mongoose.Schema({
     unique: true,
     match: [/.+\@.+\..+/, "Please enter a valid email"],
   },
+
   password: {
     type: String,
     required: [true, "Password is required"],
-    minlength: [6, "Password must be at least 6 characters"],
+    minlength: [6, "Password must be at least 6 characters long"],
+    select: false, // don’t return password by default
   },
+
+  // ===== Email verification =====
+  isVerified: { type: Boolean, default: false },
+  verificationToken: { type: String },
+  verificationTokenExpires: { type: Date },
+
+  // ===== Reset password =====
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date },
 });
 
-
-
-// Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")
+// Virtual field for formatted "memberSince"
 userSchema.virtual("formattedMemberSince").get(function () {
   return formatDateTime(this.memberSince);
 });
 
-// Ensure virtual fields are included in the output (e.g., when converting to JSON)
+// Include virtuals in output
 userSchema.set("toJSON", { virtuals: true });
 userSchema.set("toObject", { virtuals: true });
-
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Compare password for login
