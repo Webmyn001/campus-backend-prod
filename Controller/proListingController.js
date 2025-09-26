@@ -5,15 +5,19 @@ const cloudinary = require("../config/cloudinary"); // <-- make sure you have th
 exports.createProListing = async (req, res) => {
   const { title, price, condition, description, contactMethod, sellerInfo, postedTime } = req.body;
 
-  try {
-    let imageUploads = [];
-    if (req.files && req.files.length > 0) {
-      // Upload images to Cloudinary
-      imageUploads = await Promise.all(
-        req.files.map((file) =>
-          cloudinary.uploader.upload(file.path, { folder: "pro_listings" })
-        )
+try {
+    let uploadedImages = [];
+
+    if (images && images.length > 0) {
+      const uploadPromises = images.map((base64Image) =>
+        cloudinary.uploader.upload(base64Image, { folder: "listings" })
       );
+      const results = await Promise.all(uploadPromises);
+
+      uploadedImages = results.map((r) => ({
+        url: r.secure_url,
+        public_id: r.public_id,
+      }));
     }
 
     // Set expiresAt to 1 hour from now
@@ -28,10 +32,7 @@ exports.createProListing = async (req, res) => {
       postedTime,
       sellerInfo,
       expiresAt,
-      images: imageUploads.map((img) => ({
-        url: img.secure_url,
-        public_id: img.public_id,
-      })),
+      images: uploadedImages,
     });
 
     res.status(201).json({ message: "Pro Listing created successfully", listing });

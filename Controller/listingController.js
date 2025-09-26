@@ -8,7 +8,6 @@ require("dotenv").config();
 
 // Create a new listing (auto-delete after 1 hour)
 
-
 exports.createListing = async (req, res) => {
   const { title, price, condition, description, images, contactMethod, sellerInfo } = req.body;
 
@@ -19,7 +18,11 @@ exports.createListing = async (req, res) => {
         cloudinary.uploader.upload(base64Image, { folder: "listings" })
       );
       const results = await Promise.all(uploadPromises);
-      uploadedImages = results.map((r) => r.secure_url);
+
+      uploadedImages = results.map((r) => ({
+        url: r.secure_url,
+        public_id: r.public_id,
+      }));
     }
 
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -29,7 +32,7 @@ exports.createListing = async (req, res) => {
       price,
       condition,
       description,
-      images: uploadedImages,
+      images: uploadedImages, // ✅ now matches schema
       contactMethod,
       sellerInfo,
       expiresAt,

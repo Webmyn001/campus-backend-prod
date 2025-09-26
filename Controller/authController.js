@@ -6,7 +6,7 @@ const cloudinary = require("../config/cloudinary");
 
 // Generate JWT Token
 const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1d" });
 };
 
 console.log("sendEmail import test:", sendEmail)
@@ -143,7 +143,7 @@ exports.resendVerificationEmail = async (req, res) => {
     await user.save();
 
     const verificationUrl = `${process.env.CLIENT_URL}/verify-email?token=${user.verificationToken}&email=${email}`;
-
+  console.log(verificationUrl)
     await sendEmail(
       email,
       "Verify Your Email",
@@ -205,10 +205,9 @@ exports.getAllUsers = async (req, res) => {
 };
 
 
-//update user
 exports.updateUser = async (req, res) => {
   const { id } = req.params;
-  const updates = { ...req.body }; // copy updates
+  const updates = { ...req.body };
 
   try {
     const user = await User.findById(id);
@@ -218,21 +217,37 @@ exports.updateUser = async (req, res) => {
 
     // If updating profilePhoto
     if (updates.profilePhoto) {
-      // Delete old photo from Cloudinary if exists
-      if (user.profilePhoto?.public_id) {
-        await cloudinary.uploader.destroy(user.profilePhoto.public_id);
-      }
+  let photoToUpload;
 
-      // Upload new one
-      const uploaded = await cloudinary.uploader.upload(updates.profilePhoto, {
-        folder: "users",
-      });
+  // Determine string to upload
+  if (typeof updates.profilePhoto === "object" && updates.profilePhoto.url) {
+    photoToUpload = updates.profilePhoto.url;
+  } else if (typeof updates.profilePhoto === "string") {
+    photoToUpload = updates.profilePhoto;
+  } else {
+    return res.status(400).json({ message: "Invalid profilePhoto format." });
+  }
 
-      updates.profilePhoto = {
-        url: uploaded.secure_url,
-        public_id: uploaded.public_id,
-      };
+  // Delete old photo safely
+  if (user.profilePhoto?.public_id) {
+    try {
+      await cloudinary.uploader.destroy(user.profilePhoto.public_id);
+    } catch (err) {
+      console.warn("Cloudinary destroy warning:", err.message);
+      // Continue even if photo not found
     }
+  }
+
+  // Upload new photo
+  const uploaded = await cloudinary.uploader.upload(photoToUpload, {
+    folder: "users",
+  });
+
+  updates.profilePhoto = {
+    url: uploaded.secure_url,
+    public_id: uploaded.public_id,
+  };
+}
 
     // Update user with new fields
     const updatedUser = await User.findByIdAndUpdate(id, updates, {

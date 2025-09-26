@@ -14,46 +14,58 @@ function formatDateTime(date) {
 }
 
 const ViplistingSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: [true, "Title is required"],
-  },
-  price: {
-    type: String,
-    required: [true, "Price is required"],
-  },
-  condition: {
-    type: String,
-    required: [true, "Condition is required"],
-  },
-  description: {
-    type: String,
-    required: [true, "Description is required"],
-    minlength: [10, "Description must be at least 10 characters long"],
-  },
-images: [
-  {
-    url: { type: String, required: true },
-    public_id: { type: String, required: true },
-  },
-],
+  
+ 
+  images: [
+    {
+      url: { type: String, required: true },
+      public_id: { type: String, required: true },
+    },
+  ],
   contactMethod: {
     type: String, // Contact method
     required: [true, "Contact method is required"],
-  },
-  postedAt: {
-    type: Date,
-    default: Date.now, // Automatically set the postedAt field
-    immutable: true, // Prevent this field from being updated after creation
   },
   sellerInfo: {
     type: Object, // Seller information
     required: [true, "Seller info is required"],
   },
+
+   postedAt: {
+    type: Date,
+    default: Date.now, // Automatically set the postedAt field
+    immutable: true, // Prevent this field from being updated after creation
+  },
+
   expiresAt: {
-  type: Date,
-  required: true, // keep the field
-},
+    type: Date,
+    required: true, // keep the field
+  },
+
+  // ===== New fields added for premium business/service listings =====
+  businessName: {
+    type: String,
+    required: [true, "Business/Service Name is required"],
+  },
+  address: {
+    type: String,
+    required: [true, "Address is required"],
+  },
+  fullDescription: {
+    type: String,
+    required: [true, "Full Description is required"],
+    minlength: [20, "Full Description must be at least 20 characters long"],
+  },
+  workingHours: {
+    type: String,
+    required: [true, "Working Hours are required"],
+  },
+  businessEmail: {
+    type: String,
+    required: [true, "Business Email is required"],
+    lowercase: true,
+    trim: true,
+  },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")

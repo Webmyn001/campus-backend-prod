@@ -9,6 +9,7 @@ const profileRoutes = require("./Routes/profileRoutes");
 const reviewRoutes = require("./Routes/reviewRoutes");
 const contactRoutes = require("./Routes/contactRoutes");
 const reportRoutes = require("./Routes/reportRoutes");
+const paymentRoutes = require("./Routes/paymentRoutes")
 
 require("./jobs/cleanupExpiredListings");
 const cors =require("cors") 
@@ -35,6 +36,7 @@ app.use("/api/profiles", profileRoutes); // Add Profile routes
 app.use("/api/reviews", reviewRoutes); // Add Review routes
 app.use("/api/contact", contactRoutes); // Add contact routes
 app.use("/api/report", reportRoutes); // Add report routes
+app.use("/api", paymentRoutes);
 
 
 
