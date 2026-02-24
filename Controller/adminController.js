@@ -19,27 +19,37 @@ exports.sendBulkEmail = async (req, res) => {
             userMap[u.email] = u.name || "User";
         });
 
-        // 2. Iterate and Send Sequentially
+        // 2. Iterate and Send in Batches
         let sentCount = 0;
         let failedCount = 0;
+        const BATCH_SIZE = 10;
+        const BATCH_DELAY = 3000; // 3 seconds between batches
+        const EMAIL_DELAY = 1000; // 1 second between emails within a batch
 
-        for (const email of emails) {
-            const name = userMap[email] || "CampusCraver";
+        for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+            const batch = emails.slice(i, i + BATCH_SIZE);
 
-            // Personalize body
-            const personalizedBody = body.replace(/{{name}}/g, name).replace(/\n/g, "<br>");
+            for (const email of batch) {
+                const name = userMap[email] || "CampusCraver";
+                const personalizedBody = body.replace(/{{name}}/g, name).replace(/\n/g, "<br>");
 
-            try {
-                await sendEmail(email, subject, personalizedBody);
-                sentCount++;
+                try {
+                    await sendEmail(email, subject, personalizedBody);
+                    sentCount++;
 
-                // Add a small delay between emails to avoid triggering rate limits
-                if (emails.indexOf(email) < emails.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Delay between emails in the same batch
+                    if (batch.indexOf(email) < batch.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, EMAIL_DELAY));
+                    }
+                } catch (error) {
+                    console.error(`Failed to send to ${email}:`, error.message);
+                    failedCount++;
                 }
-            } catch (error) {
-                console.error(`Failed to send to ${email}:`, error.message);
-                failedCount++;
+            }
+
+            // Delay between batches
+            if (i + BATCH_SIZE < emails.length) {
+                await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
             }
         }
 
