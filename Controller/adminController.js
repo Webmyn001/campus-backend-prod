@@ -19,14 +19,11 @@ exports.sendBulkEmail = async (req, res) => {
             userMap[u.email] = u.name || "User";
         });
 
-        // 2. Iterate and Send
-        // Note: detailed error handling per email is skipped to avoid stopping the loop,
-        // but we log errors.
-
+        // 2. Iterate and Send Sequentially
         let sentCount = 0;
         let failedCount = 0;
 
-        const emailPromises = emails.map(async (email) => {
+        for (const email of emails) {
             const name = userMap[email] || "CampusCraver";
 
             // Personalize body
@@ -35,13 +32,16 @@ exports.sendBulkEmail = async (req, res) => {
             try {
                 await sendEmail(email, subject, personalizedBody);
                 sentCount++;
+
+                // Add a small delay between emails to avoid triggering rate limits
+                if (emails.indexOf(email) < emails.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
             } catch (error) {
                 console.error(`Failed to send to ${email}:`, error.message);
                 failedCount++;
             }
-        });
-
-        await Promise.all(emailPromises);
+        }
 
         res.status(200).json({
             message: "Bulk email process completed",
