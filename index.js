@@ -10,9 +10,13 @@ const reviewRoutes = require("./Routes/reviewRoutes");
 const contactRoutes = require("./Routes/contactRoutes");
 const reportRoutes = require("./Routes/reportRoutes");
 const paymentRoutes = require("./Routes/paymentRoutes")
+const userRoutes = require("./Routes/userRoutes");
+
+const adminRoutes = require("./Routes/adminRoutes");
+const productRoutes = require("./Routes/productRoutes");
 
 require("./jobs/cleanupExpiredListings");
-const cors =require("cors") 
+const cors = require("cors")
 
 
 dotenv.config();
@@ -23,8 +27,12 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-// Enable CORS for all routes
-app.use(cors());
+// Enable CORS
+app.use(cors({
+  origin: ["http://localhost:3000", "http://localhost:8080", "https://campuscrave-lu04.onrender.com", "https://www.campuscrave.ng", "https://campuscrave.ng"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
 
 // Routes
@@ -36,17 +44,13 @@ app.use("/api/profiles", profileRoutes); // Add Profile routes
 app.use("/api/reviews", reviewRoutes); // Add Review routes
 app.use("/api/contact", contactRoutes); // Add contact routes
 app.use("/api/report", reportRoutes); // Add report routes
+app.use("/api/users", userRoutes); // Add user routes
+app.use("/api/admin", adminRoutes); // Add admin routes
+app.use("/api/products", productRoutes); // Add admin-managed product routes
 app.use("/api", paymentRoutes);
 
 
 
-app.use(cors(
-   {
-      origin:["http://localhost:3000/","https://campuscrave-lu04.onrender.com"],
-      methods: ["GET", "POST","PUT","DELETE"],
-      credentials: true
-   }
-));
 
 
 // Connect to MongoDB and start server

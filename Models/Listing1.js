@@ -41,6 +41,18 @@ const listingSchema = new mongoose.Schema({
     type: String, // Contact method
     required: [true, "Contact method is required"],
   },
+  type: {
+    type: String, // Contact method
+    default: "urgent"
+  },
+  soldOut: {
+    type: Boolean, 
+    default: false
+  },
+    isUserVerified: {
+    type: Boolean, 
+    default: false
+  },
   postedAt: {
     type: Date,
     default: Date.now, // Automatically set the postedAt field
@@ -52,10 +64,10 @@ const listingSchema = new mongoose.Schema({
   },
 
 
-  expiresAt: {
-  type: Date,
-  required: true, // keep the field
-},
+//   expiresAt: {
+//   type: Date, 
+//   required: true, // keep the field
+// },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")
@@ -64,13 +76,13 @@ listingSchema.virtual("formattedPostedAt").get(function () {
 });
 
 // Virtual field to calculate seconds left until deletion
-listingSchema.virtual("secondsLeft").get(function () {
-  const now = new Date();
-  const expiryTime = this.expiresAt;
-  const timeDiff = expiryTime - now; // Difference in milliseconds
-  const secondsLeft = Math.max(0, Math.floor(timeDiff / 1000)); // Convert to seconds, no negative values
-  return secondsLeft;
-});
+// listingSchema.virtual("secondsLeft").get(function () {
+//   const now = new Date();
+//   const expiryTime = this.expiresAt;
+//   const timeDiff = expiryTime - now; // Difference in milliseconds
+//   const secondsLeft = Math.max(0, Math.floor(timeDiff / 1000)); // Convert to seconds, no negative values
+//   return secondsLeft;
+// });
 
 listingSchema.set("toJSON", { virtuals: true });
 listingSchema.set("toObject", { virtuals: true });

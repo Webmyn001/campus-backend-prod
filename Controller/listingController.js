@@ -25,7 +25,8 @@ exports.createListing = async (req, res) => {
       }));
     }
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); //3dayshrs
+
 
     const listing = await Listing.create({
       title,
@@ -35,7 +36,7 @@ exports.createListing = async (req, res) => {
       images: uploadedImages, // ✅ now matches schema
       contactMethod,
       sellerInfo,
-      expiresAt,
+      // expiresAt,
     });
 
     res.status(201).json({ message: "Listing created successfully", listing });
@@ -60,7 +61,7 @@ exports.getListingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await Listing.findById(id).populate("seller", "email");
+    const listing = await Listing.findById(id);
     if (!listing) {
       return res.status(404).json({ message: "Listing not found" });
     }
@@ -91,29 +92,24 @@ exports.updateListing = async (req, res) => {
   }
 };
 
+
 // Delete a listing
 exports.deleteListing = async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Find the listing first
     const listing = await Listing.findById(id);
 
     if (!listing) {
       return res.status(404).json({ message: "Listing not found" });
     }
 
-    // Delete images from Cloudinary (if any)
+    // Delete images from Cloudinary if any
     if (listing.images && listing.images.length > 0) {
-      const deletePromises = listing.images.map((imageUrl) => {
-        // Extract public_id from the URL (e.g., "listings/abc123")
-        const parts = imageUrl.split("/");
-        const publicIdWithExt = parts[parts.length - 1];
-        const publicId = `listings/${publicIdWithExt.split(".")[0]}`;
-
-        return cloudinary.uploader.destroy(publicId);
-      });
-
-      await Promise.all(deletePromises);
+      await Promise.all(
+        listing.images.map((img) => cloudinary.uploader.destroy(img.public_id))
+      );
     }
 
     // Delete the listing from MongoDB

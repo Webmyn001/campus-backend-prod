@@ -36,11 +36,24 @@ const ViplistingSchema = new mongoose.Schema({
     default: Date.now, // Automatically set the postedAt field
     immutable: true, // Prevent this field from being updated after creation
   },
-
-  expiresAt: {
-    type: Date,
-    required: true, // keep the field
+  type: {
+    type: String, // Contact method
+    default: "service"
   },
+  
+  soldOut: {
+    type: Boolean, 
+    default: false
+  },
+    isUserVerified: {
+    type: Boolean, 
+    default: false
+  },
+
+  // expiresAt: {
+  //   type: Date,
+  //   required: true, // keep the field
+  // },
 
   // ===== New fields added for premium business/service listings =====
   businessName: {

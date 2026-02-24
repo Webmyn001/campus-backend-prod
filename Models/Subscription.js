@@ -1,29 +1,98 @@
 const mongoose = require("mongoose");
 
 const subscriptionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  plan: { type: String, enum: ["starter", "standard", "premium"], required: true },
-  amountPaid: { type: Number, required: true },
-  currency: { type: String, default: "NGN" },
-  paymentStatus: { type: String, enum: ["pending", "successful", "failed"], default: "pending" },
-  flutterwaveTxId: { type: String },
-  createdAt: { type: Date, default: Date.now },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true,
+  },
 
-  validityInterval: { type: Number, default: 30 }, // days
-  expiresAt: { type: Date },
+  // ✅ Used for webhook email matching
+  userEmail: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    index: true,
+  },
+
+  userName: {
+    type: String,
+    trim: true,
+  },
+
+  plan: {
+    type: String,
+    enum: ["starter", "standard", "premium"],
+    required: true,
+    index: true,
+  },
+
+  amountPaid: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+
+  currency: {
+    type: String,
+    default: "NGN",
+  },
+
+  paymentStatus: {
+    type: String,
+    enum: ["pending", "successful", "failed"],
+    default: "pending",
+    index: true,
+  },
+
+  // 🔁 OLD (keep for historical Flutterwave records)
+  flutterwaveTxId: {
+    type: String,
+    sparse: true,
+    index: true,
+  },
+
+  // ✅ NEW (Paystack reference)
+  paystackRef: {
+    type: String,
+    sparse: true,
+    unique: true,
+    index: true,
+  },
+
+  frontendRef: { type: String, unique: true, sparse: true },
+  // 📆 Subscription length in days
+  validityInterval: {
+    type: Number,
+    default: 30,
+  },
+
+  expiresAt: {
+    type: Date,
+    index: true,
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now,
+    index: true,
+  },
 });
 
-// Auto-calc expiresAt
+// ✅ Auto-calc expiresAt if not manually set
 subscriptionSchema.pre("save", function (next) {
   if (!this.expiresAt) {
+    const start = this.createdAt || new Date();
     this.expiresAt = new Date(
-      this.createdAt.getTime() + this.validityInterval * 24 * 60 * 60 * 1000
+      start.getTime() + this.validityInterval * 24 * 60 * 60 * 1000
     );
   }
   next();
 });
 
-// ✅ Use module.exports instead of export default
+
+// ✅ Export
 module.exports =
   mongoose.models.Subscription ||
   mongoose.model("Subscription", subscriptionSchema, "userplans");

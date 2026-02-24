@@ -37,7 +37,8 @@ exports.createVIPListing = async (req, res) => {
     }
 
     // Set expiresAt to 1 hour from now (you can adjust)
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+   // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days (1 month)
+
 
     const listing = await VipListing.create({
       businessName,
@@ -48,7 +49,7 @@ exports.createVIPListing = async (req, res) => {
       images: uploadedImages,
       contactMethod,
       sellerInfo,
-      expiresAt
+     // expiresAt
     });
 
     res.status(201).json({ message: "VIP Listing created successfully", listing });
@@ -110,14 +111,23 @@ exports.deleteVIPListing = async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Find and delete the listing
     const listing = await VipListing.findByIdAndDelete(id);
 
     if (!listing) {
       return res.status(404).json({ message: "VIP Listing not found" });
     }
 
+    // Delete associated images from Cloudinary if any
+    if (listing.images && listing.images.length > 0) {
+      await Promise.all(
+        listing.images.map((img) => cloudinary.uploader.destroy(img.public_id))
+      );
+    }
+
     res.status(200).json({ message: "VIP Listing deleted successfully" });
   } catch (error) {
+    console.error("Error deleting VIP listing:", error);
     res.status(500).json({ message: "Failed to delete VIP listing", error });
   }
 };

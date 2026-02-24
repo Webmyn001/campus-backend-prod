@@ -42,10 +42,24 @@ exports.signup = async (req, res) => {
       email,
       "Verify Your Email",
       `<p>Hello ${name || "User"},</p>
-       <p>Thank you for signing up. Please verify your email by clicking the link below:</p>
-       <a href="${verificationUrl}">Verify Email</a>
-       <p>This link will expire in 24 hours.</p>`
-    );
+
+       <p>🎉 Welcome to our community! We’re excited to have you on board.</p>
+
+       <p>To get started, please verify your email address by clicking the button below:</p>
+
+      <p>
+             <a href="${verificationUrl}" 
+               style="display:inline-block; padding:10px 20px; background-color:#4F46E5; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
+            Verify Email
+            </a>
+        </p>
+
+      <p>For your security, this link will expire in 24 hours. Don’t miss out on completing your registration.</p>
+
+        <p>We can’t wait for you to explore everything we’ve prepared for you!</p>
+
+          <p>Best regards,<br/>CampusCrave Team</p>
+        `);
 
     const token = generateToken(user._id);
 
@@ -143,7 +157,7 @@ exports.resendVerificationEmail = async (req, res) => {
     await user.save();
 
     const verificationUrl = `${process.env.CLIENT_URL}/verify-email?token=${user.verificationToken}&email=${email}`;
-  console.log(verificationUrl)
+    console.log(verificationUrl)
     await sendEmail(
       email,
       "Verify Your Email",
@@ -192,8 +206,41 @@ exports.login = async (req, res) => {
   }
 };
 
+// Admin Login
+exports.adminLogin = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
+    }
 
-// Get all Users
+    const user = await User.findOne({ email }).select("+password");
+    if (!user) return res.status(401).json({ message: "Invalid admin credentials." });
+
+    if (user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) return res.status(401).json({ message: "Invalid admin credentials." });
+
+    const token = generateToken(user._id);
+
+    // Remove password before sending
+    user.password = undefined;
+
+    res.status(200).json({
+      message: "Admin login successful",
+      token,
+      user,
+    });
+  } catch (error) {
+    console.error("Admin Login Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Get All Users
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find();
@@ -205,79 +252,9 @@ exports.getAllUsers = async (req, res) => {
 };
 
 
-exports.updateUser = async (req, res) => {
-  const { id } = req.params;
-  const updates = { ...req.body };
 
-  try {
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
 
-    // If updating profilePhoto
-    if (updates.profilePhoto) {
-  let photoToUpload;
 
-  // Determine string to upload
-  if (typeof updates.profilePhoto === "object" && updates.profilePhoto.url) {
-    photoToUpload = updates.profilePhoto.url;
-  } else if (typeof updates.profilePhoto === "string") {
-    photoToUpload = updates.profilePhoto;
-  } else {
-    return res.status(400).json({ message: "Invalid profilePhoto format." });
-  }
-
-  // Delete old photo safely
-  if (user.profilePhoto?.public_id) {
-    try {
-      await cloudinary.uploader.destroy(user.profilePhoto.public_id);
-    } catch (err) {
-      console.warn("Cloudinary destroy warning:", err.message);
-      // Continue even if photo not found
-    }
-  }
-
-  // Upload new photo
-  const uploaded = await cloudinary.uploader.upload(photoToUpload, {
-    folder: "users",
-  });
-
-  updates.profilePhoto = {
-    url: uploaded.secure_url,
-    public_id: uploaded.public_id,
-  };
-}
-
-    // Update user with new fields
-    const updatedUser = await User.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    });
-
-    res
-      .status(200)
-      .json({ message: "User updated successfully", user: updatedUser });
-  } catch (error) {
-    console.error("UpdateUser Error:", error);
-    res.status(500).json({ message: "Failed to update user" });
-  }
-};
-
-// Get User By ID
-exports.getUserById = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const user = await User.findById(id);
-    if (!user) return res.status(404).json({ message: "User not found." });
-
-    res.status(200).json(user);
-  } catch (error) {
-    console.error("GetUserById Error:", error);
-    res.status(500).json({ message: "Failed to fetch user" });
-  }
-};
 
 
 // Reset Password

@@ -3,9 +3,9 @@ const cloudinary = require("../config/cloudinary"); // <-- make sure you have th
 
 // Create a new pro listing (auto-delete after 1 hour)
 exports.createProListing = async (req, res) => {
-  const { title, price, condition, description, contactMethod, sellerInfo, postedTime } = req.body;
+  const { title, price, condition, description, images, contactMethod, sellerInfo, postedTime } = req.body;
 
-try {
+  try {
     let uploadedImages = [];
 
     if (images && images.length > 0) {
@@ -20,8 +20,8 @@ try {
       }));
     }
 
-    // Set expiresAt to 1 hour from now
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    // const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     const listing = await ProListing.create({
       title,
@@ -31,7 +31,7 @@ try {
       contactMethod,
       postedTime,
       sellerInfo,
-      expiresAt,
+      //  expiresAt,
       images: uploadedImages,
     });
 
@@ -56,7 +56,7 @@ exports.getProListingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await ProListing.findById(id).populate("seller", "email");
+    const listing = await ProListing.findById(id);
     if (!listing) {
       return res.status(404).json({ message: "Pro Listing not found" });
     }

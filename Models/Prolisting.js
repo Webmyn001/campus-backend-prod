@@ -41,6 +41,18 @@ const ProlistingSchema = new mongoose.Schema({
     type: String, // Contact method
     required: [true, "Contact method is required"],
   },
+  type: {
+    type: String, // Contact method
+    default: "premium"
+  },
+  soldOut: {
+    type: Boolean, 
+    default: false
+  },
+    isUserVerified: {
+    type: Boolean, 
+    default: false
+  },
   postedAt: {
     type: Date,
     default: Date.now, // Automatically set the postedAt field
@@ -50,10 +62,10 @@ const ProlistingSchema = new mongoose.Schema({
     type: Object, // Seller information
     required: [true, "Seller info is required"],
   },
-  expiresAt: {
-  type: Date,
-  required: true, // keep the field
-},
+//   expiresAt: {
+//   type: Date,
+//   required: true, // keep the field
+// },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")

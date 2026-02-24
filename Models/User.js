@@ -21,14 +21,14 @@ const userSchema = new mongoose.Schema({
   phone: { type: String },
   campusId: { type: String },
   profilePhoto: {
-  url: { type: String },
-  public_id: { type: String },
-},
+    url: { type: String },
+    public_id: { type: String },
+  },
   course: { type: String },
   year: { type: String },
   hostel: { type: String },
   status: { type: String },
-  emergencyContact: { type: String },
+  whatsapp: { type: String },
   memberSince: { type: Date, default: Date.now, immutable: true },
   createdAt: { type: Date, default: Date.now },
 
@@ -46,6 +46,9 @@ const userSchema = new mongoose.Schema({
     select: false, // don’t return password by default
   },
 
+  isUserVerified: { type: Boolean, default: false },
+
+
   // ===== Email verification =====
   isVerified: { type: Boolean, default: false },
   verificationToken: { type: String },
@@ -54,6 +57,12 @@ const userSchema = new mongoose.Schema({
   // ===== Reset password =====
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
+
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
+  },
 });
 
 // Virtual field for formatted "memberSince"

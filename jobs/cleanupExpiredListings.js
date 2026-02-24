@@ -38,13 +38,15 @@ async function cleanupModel(Model, folderName) {
   }
 }
 
-// run every 5 minutes
-cron.schedule("*/5 * * * *", async () => {
-  try {
-    await cleanupModel(Listing, "listings");
-    await cleanupModel(ProListing, "pro_listings");
-    await cleanupModel(VipListing, "vip_listings");
-  } catch (err) {
-    console.error("Cleanup job failed:", err.message);
-  }
-});
+// ❌ Temporarily disable the cleanup cron job
+
+// cron.schedule("*/5 * * * *", async () => {
+//   try {
+//     await cleanupModel(Listing, "listings");
+//     await cleanupModel(ProListing, "pro_listings");
+//     await cleanupModel(VipListing, "vip_listings");
+//   } catch (err) {
+//     console.error("Cleanup job failed:", err.message);
+//   }
+// });
+

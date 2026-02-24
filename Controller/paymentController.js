@@ -1,154 +1,161 @@
-const axios = require("axios") ;
-const crypto =require ("crypto");
-const mongoose = require ("mongoose");
-const Subscription = require ("../Models/Subscription");
+const axios = require("axios");
+const mongoose = require("mongoose");
+const Subscription = require("../Models/Subscription");
 const dotenv = require("dotenv");
+const crypto = require("crypto");
 
-// ✅ Verify payment manually
+dotenv.config();
+
+// ==========================
+// ✅ Paystack Verify Payment
+// ==========================
 const verifyPayment = async (req, res) => {
   try {
-    const { transaction_id, userId, plan } = req.body;
+    const { reference, userId, plan, userEmail, userName } = req.body;
 
-    if (!transaction_id || !userId || !plan) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields" });
+    if (!reference || !userId || !plan) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
-    // Free plan (test only)
-    if (transaction_id === "FREE_PLAN") {
-      const subscription = new Subscription({
-        userId,
-        plan: "starter",
-        amountPaid: 0,
-        currency: "NGN",
-        paymentStatus: "successful",
-        flutterwaveTxId: transaction_id,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      });
-      await subscription.save();
+    const now = new Date();
 
-      return res.status(200).json({
-        success: true,
-        message: "Free starter plan subscribed (24h)",
-        subscription,
-      });
-    }
-
-    // Verify with Flutterwave
-    const response = await axios.get(
-      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-      {
-        headers: { Authorization: `Bearer ${process.env.FLW_SECRET_KEY}` },
-      }
-    );
-
-    const data = response.data?.data;
-    if (!data || data.status !== "successful") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payment not successful" });
-    }
-
-    // Prevent duplicate txId
-    const existing = await Subscription.findOne({
-      flutterwaveTxId: transaction_id,
-    });
+    // Prevent duplicate subscriptions
+    const existing = await Subscription.findOne({ paystackRef: reference });
     if (existing) {
       return res.json({
         success: true,
-        message: "Already verified",
+        message: "Subscription already exists or pending verification",
         subscription: existing,
       });
     }
 
-    // Plan validity
-    let validityInterval = 30;
-    if (plan === "starter") validityInterval = 1;
+    // Verify transaction with Paystack
+    const response = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      }
+    );
 
+    const data = response.data?.data;
+    if (!data) throw new Error("Invalid Paystack response");
+
+    console.log("🔹 Paystack Verify Response:", {
+      frontendRef: reference,
+      paystackRef: data.reference,
+      status: data.status,
+    });
+
+    // Determine plan validity
+    const validityInterval = plan === "starter" ? 1 : 30;
+
+    // Save subscription
     const subscription = new Subscription({
       userId,
+      userEmail: userEmail || data.customer.email.toLowerCase().trim(),
+      userName: userName,
       plan,
-      amountPaid: data.amount,
+      amountPaid: data.amount / 100,
       currency: data.currency,
-      paymentStatus: "successful",
-      flutterwaveTxId: transaction_id,
-      expiresAt: new Date(Date.now() + validityInterval * 24 * 60 * 60 * 1000),
+      paymentStatus: "pending",
+      paystackRef: data.reference, // must match webhook
+      frontendRef: reference,      // optional
+      expiresAt: new Date(now.getTime() + validityInterval * 24 * 60 * 60 * 1000),
     });
 
     await subscription.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Subscription created", subscription });
+
+    res.status(201).json({
+      success: true,
+      message: "Subscription created. Waiting for webhook confirmation.",
+      subscription,
+    });
   } catch (err) {
-    console.error("❌ verify-payment error:", err.response?.data || err.message);
+    console.error("❌ verifyPayment error:", err.response?.data || err.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// ✅ Flutterwave webhook
-const flutterwaveWebhook = async (req, res) => {
+// ==========================
+// ✅ Paystack Webhook
+// ==========================
+const paystackWebhook = async (req, res) => {
   try {
-    const signature = req.headers["verif-hash"];
-    const secret = process.env.FLW_SECRET_KEY;
-
     const hash = crypto
-      .createHmac("sha256", secret)
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
       .update(JSON.stringify(req.body))
       .digest("hex");
 
-    if (signature !== hash) {
-      console.error("❌ Invalid webhook signature");
-      return res.status(401).json({ success: false, message: "Invalid signature" });
+    if (hash !== req.headers["x-paystack-signature"]) {
+      console.error("❌ Invalid signature. Webhook rejected.");
+      return res.status(401).send("Invalid signature");
     }
 
     const event = req.body;
-    if (!event?.data) {
-      return res.status(400).json({ success: false, message: "No data in webhook" });
+
+    if (event.event !== "charge.success") {
+      console.log("ℹ️ Non-success event received. Ignored:", event.event);
+      return res.sendStatus(200);
     }
 
-    if (event.data.status === "successful") {
-      const userId = event.data.customer?.id;
-      const txId = event.data.id;
+    const { reference, amount, currency, customer } = event.data;
+    console.log(`🔔 Webhook received. Reference: ${reference}, Amount: ${amount}, Email: ${customer?.email}`);
 
-      const existing = await Subscription.findOne({ flutterwaveTxId: txId });
-      if (existing) {
-        return res.status(200).json({ success: true, message: "Already processed" });
-      }
+    // Find subscription
+    let sub = await Subscription.findOne({ paystackRef: reference });
 
-      const plan = event.data.plan || "standard";
-      let validityInterval = plan === "starter" ? 1 : 30;
-
-      const subscription = new Subscription({
-        userId,
-        plan,
-        amountPaid: event.data.amount,
-        currency: event.data.currency,
-        paymentStatus: "successful",
-        flutterwaveTxId: txId,
-        expiresAt: new Date(Date.now() + validityInterval * 24 * 60 * 60 * 1000),
-      });
-
-      await subscription.save();
-      console.log("✅ Subscription created via webhook:", subscription);
+    // Retry in case subscription hasn't been saved yet
+    if (!sub) {
+      console.log(`⏳ Subscription not found, retrying in 2s...`);
+      await new Promise((r) => setTimeout(r, 2000));
+      sub = await Subscription.findOne({ paystackRef: reference });
     }
 
-    res.status(200).json({ success: true });
+    if (!sub) {
+      console.warn(`⚠️ Subscription still not found for reference: ${reference}`);
+      return res.sendStatus(200);
+    }
+
+    console.log("📦 Found subscription in DB:", sub);
+
+    const updated = await Subscription.findByIdAndUpdate(
+      sub._id,
+      {
+        $set: {
+          paymentStatus: "successful",
+          amountPaid: amount / 100,
+          currency,
+          userEmail: customer.email.toLowerCase().trim(),
+        },
+      },
+      { new: true }
+    );
+
+    console.log("✅ Subscription updated successfully:", updated);
+
+    res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Webhook processing error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("🔥 Paystack webhook error:", err);
+    res.sendStatus(500);
   }
 };
 
+// ==========================
 // ✅ Get all subscriptions
-const getAllSubscriptions = async (req, res) => {
+// ==========================
+const getAllSubscriptions = async (_req, res) => {
   try {
     const subscriptions = await Subscription.find().sort({ createdAt: -1 });
     const now = new Date();
 
     const dataWithStatus = subscriptions.map((sub) => ({
       ...sub.toObject(),
-      status: sub.expiresAt >= now ? "active" : "expired",
+      status:
+        sub.paymentStatus === "successful" && sub.expiresAt >= now
+          ? "active"
+          : sub.paymentStatus === "pending"
+            ? "pending"
+            : "expired",
     }));
 
     res.status(200).json({ success: true, data: dataWithStatus });
@@ -157,33 +164,27 @@ const getAllSubscriptions = async (req, res) => {
   }
 };
 
+// ==========================
 // ✅ Get user subscription status
+// ==========================
 const getUserStatus = async (req, res) => {
   try {
     const { id } = req.query;
-
     if (!id) return res.status(400).json({ success: false, message: "User ID is required" });
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(String(id)))
       return res.status(400).json({ success: false, message: "Invalid User ID" });
-    }
+
+    const now = new Date();
 
     const subscriptions = await Subscription.find({ userId: id }).sort({ createdAt: -1 });
 
-    if (!subscriptions.length) {
-      return res.json({
-        success: true,
-        activePlans: [], // no subscription at all
-      });
-    }
+    if (!subscriptions.length) return res.json({ success: true, activePlans: [] });
 
-    const now = new Date();
     const activePlans = subscriptions.map((sub) => {
       let status;
-      if (sub.expiresAt >= now) {
-        status = "subscribed";
-      } else {
-        status = "expired";
-      }
+      if (sub.paymentStatus === "pending") status = "pending";
+      else if (sub.expiresAt >= now && sub.paymentStatus === "successful") status = "subscribed";
+      else status = "expired";
 
       return {
         plan: sub.plan,
@@ -196,19 +197,19 @@ const getUserStatus = async (req, res) => {
       };
     });
 
-    res.json({ success: true, activePlans });
+    const latestActive = subscriptions.find(
+      (sub) => sub.expiresAt >= now && sub.paymentStatus === "successful"
+    );
+
+    res.json({ success: true, activePlans, latestActive: latestActive || null });
   } catch (err) {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-
-module.exports = { getUserStatus };
-
-
 module.exports = {
   verifyPayment,
-  flutterwaveWebhook,
+  paystackWebhook,
   getAllSubscriptions,
   getUserStatus,
 };

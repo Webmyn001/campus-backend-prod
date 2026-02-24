@@ -2,13 +2,12 @@ const express = require("express");
 const {
   signup,
   login,
-  getAllUsers,
-  updateUser,
-  getUserById,
   verifyEmail,
   resendVerificationEmail,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  adminLogin,
+  getAllUsers
 } = require("../Controller/authController");
 
 const router = express.Router();
@@ -33,15 +32,11 @@ router.post("/forgot-password", forgotPassword);
 // Reset Password
 router.post("/reset-password", resetPassword);
 
-// ===== User Management Routes =====
+// Admin Login
+router.post("/admin-login", adminLogin);
 
-// Get All Users
+// Get All Users (Alias for frontend compatibility)
 router.get("/users", getAllUsers);
 
-// Update User by ID
-router.put("/:id", updateUser);
-
-// Get Individual User by ID
-router.get("/:id", getUserById);
 
 module.exports = router;
