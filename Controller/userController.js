@@ -1,4 +1,7 @@
 const User = require("../Models/User");
+const Listing = require("../Models/Listing1");
+const VipListing = require("../Models/vipListing");
+const Product = require("../Models/Product");
 const cloudinary = require("../config/cloudinary");
 
 // Get all Users
@@ -108,5 +111,62 @@ exports.deleteUser = async (req, res) => {
     } catch (error) {
         console.error("DeleteUser Error:", error);
         res.status(500).json({ message: "Failed to delete user" });
+    }
+};
+
+// Get User Store (Aggregated profile, products, and services)
+exports.getUserStore = async (req, res) => {
+    const { identifier } = req.params;
+
+    try {
+        // 1. Find user by either _id or username
+        let user;
+        if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
+            // It's a valid ObjectId
+            user = await User.findById(identifier).select("-password -email -phone -whatsapp");
+        }
+
+        if (!user) {
+            // Try searching by username (case-insensitive)
+            user = await User.findOne({
+                username: { $regex: new RegExp(`^${identifier}$`, 'i') }
+            }).select("-password -email -phone -whatsapp");
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: "Store not found." });
+        }
+
+        const userId = user._id.toString();
+
+        // 2. Fetch Community Listings (Products)
+        // SellerInfo stores ID differently across schemas, checking common patterns
+        const communityListings = await Listing.find({
+            $or: [
+                { "sellerInfo.id": userId },
+                { "sellerInfo._id": userId },
+                { "sellerInfo": userId } // Just in case it's a string ref
+            ]
+        }).sort({ postedAt: -1 });
+
+        // 3. Fetch VIP Listings (Business Services)
+        const businessListings = await VipListing.find({
+            $or: [
+                { "sellerInfo.id": userId },
+                { "sellerInfo._id": userId },
+                { "sellerInfo": userId }
+            ]
+        }).sort({ postedAt: -1 });
+
+        // 4. Return aggregated data
+        res.status(200).json({
+            user,
+            products: communityListings,
+            businessServices: businessListings
+        });
+
+    } catch (error) {
+        console.error("GetUserStore Error:", error);
+        res.status(500).json({ message: "Failed to load user store" });
     }
 };

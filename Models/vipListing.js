@@ -14,8 +14,8 @@ function formatDateTime(date) {
 }
 
 const ViplistingSchema = new mongoose.Schema({
-  
- 
+
+
   images: [
     {
       url: { type: String, required: true },
@@ -31,7 +31,7 @@ const ViplistingSchema = new mongoose.Schema({
     required: [true, "Seller info is required"],
   },
 
-   postedAt: {
+  postedAt: {
     type: Date,
     default: Date.now, // Automatically set the postedAt field
     immutable: true, // Prevent this field from being updated after creation
@@ -40,13 +40,15 @@ const ViplistingSchema = new mongoose.Schema({
     type: String, // Contact method
     default: "service"
   },
-  
+
   soldOut: {
-    type: Boolean, 
+    type: Boolean,
     default: false
   },
-    isUserVerified: {
-    type: Boolean, 
+  school_name: { type: String, index: true },
+  location_city: { type: String, index: true },
+  isUserVerified: {
+    type: Boolean,
     default: false
   },
 

@@ -36,6 +36,8 @@ exports.createListing = async (req, res) => {
       images: uploadedImages, // ✅ now matches schema
       contactMethod,
       sellerInfo,
+      school_name: sellerInfo?.school_name,
+      location_city: sellerInfo?.location_city,
       // expiresAt,
     });
 

@@ -18,6 +18,13 @@ function formatDateTime(date) {
 
 const userSchema = new mongoose.Schema({
   name: { type: String },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    minlength: [3, "Username must be at least 3 characters long"]
+  },
   phone: { type: String },
   campusId: { type: String },
   profilePhoto: {
@@ -27,6 +34,8 @@ const userSchema = new mongoose.Schema({
   course: { type: String },
   year: { type: String },
   hostel: { type: String },
+  school_name: { type: String, index: true },
+  location_city: { type: String, index: true },
   status: { type: String },
   whatsapp: { type: String },
   memberSince: { type: Date, default: Date.now, immutable: true },

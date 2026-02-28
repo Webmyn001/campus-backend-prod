@@ -14,6 +14,7 @@ const userRoutes = require("./Routes/userRoutes");
 
 const adminRoutes = require("./Routes/adminRoutes");
 const productRoutes = require("./Routes/productRoutes");
+const storePreviewRoutes = require("./Routes/storePreviewRoutes");
 
 require("./jobs/cleanupExpiredListings");
 const cors = require("cors")
@@ -47,6 +48,7 @@ app.use("/api/report", reportRoutes); // Add report routes
 app.use("/api/users", userRoutes); // Add user routes
 app.use("/api/admin", adminRoutes); // Add admin routes
 app.use("/api/products", productRoutes); // Add admin-managed product routes
+app.use("/api/public", storePreviewRoutes); // Add public preview routes
 app.use("/api", paymentRoutes);
 
 

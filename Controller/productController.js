@@ -62,6 +62,8 @@ exports.createProduct = async (req, res) => {
             sellerName: admin.name,
             sellerWhatsApp: admin.whatsapp,
             sellerImage: admin.profilePhoto?.url,
+            school_name: admin.school_name,
+            location_city: admin.location_city,
             // Course and Level are omitted for admins as requested
         };
 

@@ -1,4 +1,5 @@
 const User = require("../Models/User");
+const Setting = require("../Models/Setting");
 const sendEmail = require("../utils/sendEmail");
 
 // Send bulk email to list of users or all users
@@ -61,5 +62,30 @@ exports.sendBulkEmail = async (req, res) => {
     } catch (error) {
         console.error("Bulk Email Error:", error);
         res.status(500).json({ message: "Failed to send bulk emails", error: error.message });
+    }
+};
+
+// Update global promo status
+exports.updatePromoStatus = async (req, res) => {
+    const { isPromoActive } = req.body;
+
+    if (typeof isPromoActive !== "boolean") {
+        return res.status(400).json({ message: "isPromoActive boolean is required." });
+    }
+
+    try {
+        const setting = await Setting.findOneAndUpdate(
+            { key: "isPromoActive" },
+            { value: isPromoActive, updatedAt: Date.now() },
+            { upsert: true, new: true }
+        );
+
+        res.status(200).json({
+            message: `Promo status updated to ${isPromoActive}`,
+            isPromoActive: setting.value
+        });
+    } catch (error) {
+        console.error("Update Promo Status Error:", error);
+        res.status(500).json({ message: "Failed to update promo status", error: error.message });
     }
 };

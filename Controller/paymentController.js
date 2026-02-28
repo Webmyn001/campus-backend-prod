@@ -1,6 +1,7 @@
 const axios = require("axios");
 const mongoose = require("mongoose");
 const Subscription = require("../Models/Subscription");
+const Setting = require("../Models/Setting");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
 
@@ -207,9 +208,23 @@ const getUserStatus = async (req, res) => {
   }
 };
 
+// ==========================
+// ✅ Get global promo status
+// ==========================
+const getPromoStatus = async (_req, res) => {
+  try {
+    const setting = await Setting.findOne({ key: "isPromoActive" });
+    res.json({ success: true, isPromoActive: setting ? setting.value : false });
+  } catch (err) {
+    console.error("Get Promo Status Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   verifyPayment,
   paystackWebhook,
   getAllSubscriptions,
   getUserStatus,
+  getPromoStatus,
 };

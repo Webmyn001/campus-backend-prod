@@ -37,7 +37,7 @@ exports.createVIPListing = async (req, res) => {
     }
 
     // Set expiresAt to 1 hour from now (you can adjust)
-   // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days (1 month)
+    // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days (1 month)
 
 
     const listing = await VipListing.create({
@@ -49,7 +49,9 @@ exports.createVIPListing = async (req, res) => {
       images: uploadedImages,
       contactMethod,
       sellerInfo,
-     // expiresAt
+      school_name: sellerInfo?.school_name,
+      location_city: sellerInfo?.location_city,
+      // expiresAt
     });
 
     res.status(201).json({ message: "VIP Listing created successfully", listing });

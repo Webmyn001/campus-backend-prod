@@ -32,11 +32,11 @@ const listingSchema = new mongoose.Schema({
     minlength: [10, "Description must be at least 10 characters long"],
   },
   images: [
-  {
-    url: { type: String, required: true },
-    public_id: { type: String, required: true },
-  },
-],
+    {
+      url: { type: String, required: true },
+      public_id: { type: String, required: true },
+    },
+  ],
   contactMethod: {
     type: String, // Contact method
     required: [true, "Contact method is required"],
@@ -46,11 +46,13 @@ const listingSchema = new mongoose.Schema({
     default: "urgent"
   },
   soldOut: {
-    type: Boolean, 
+    type: Boolean,
     default: false
   },
-    isUserVerified: {
-    type: Boolean, 
+  school_name: { type: String, index: true },
+  location_city: { type: String, index: true },
+  isUserVerified: {
+    type: Boolean,
     default: false
   },
   postedAt: {
@@ -64,10 +66,10 @@ const listingSchema = new mongoose.Schema({
   },
 
 
-//   expiresAt: {
-//   type: Date, 
-//   required: true, // keep the field
-// },
+  //   expiresAt: {
+  //   type: Date, 
+  //   required: true, // keep the field
+  // },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")

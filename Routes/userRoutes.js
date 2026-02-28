@@ -4,6 +4,7 @@ const {
     getUserById,
     updateUser,
     deleteUser,
+    getUserStore,
 } = require("../Controller/userController");
 
 const authMiddleware = require("../Middleware/auth");
@@ -12,6 +13,9 @@ const router = express.Router();
 
 // Get All Users
 router.get("/", authMiddleware, getAllUsers);
+
+// Get User Store (Public)
+router.get("/store/:identifier", getUserStore);
 
 // Get User by ID
 router.get("/:id", authMiddleware, getUserById);
