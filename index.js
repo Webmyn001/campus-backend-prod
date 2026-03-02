@@ -29,8 +29,23 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 // Enable CORS
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:8080",
+  "https://campuscrave-lu04.onrender.com",
+  "https://www.campuscrave.ng",
+  "https://campuscrave.ng"
+];
+
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:8080", "https://campuscrave-lu04.onrender.com", "https://www.campuscrave.ng", "https://campuscrave.ng"],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked for origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
