@@ -1,4 +1,5 @@
 const VipListing = require("../Models/vipListing");
+const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
 
 
@@ -36,6 +37,10 @@ exports.createVIPListing = async (req, res) => {
       }));
     }
 
+    // Fetch user verification status
+    const user = await User.findById(sellerInfo?.id || sellerInfo?._id);
+    const isUserVerified = user ? !!user.isUserVerified : false;
+
     // Set expiresAt to 1 hour from now (you can adjust)
     // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days (1 month)
 
@@ -51,6 +56,7 @@ exports.createVIPListing = async (req, res) => {
       sellerInfo,
       school_name: sellerInfo?.school_name,
       location_city: sellerInfo?.location_city,
+      isUserVerified,
       // expiresAt
     });
 

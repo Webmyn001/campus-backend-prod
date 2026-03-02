@@ -50,6 +50,7 @@ const productSchema = new mongoose.Schema({
     },
     school_name: { type: String, index: true },
     location_city: { type: String, index: true },
+    isUserVerified: { type: Boolean, default: false },
 
     // Seller Information (Can be prefilled for Admin)
     sellerName: { type: String },

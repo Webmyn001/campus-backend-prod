@@ -1,4 +1,5 @@
 const Listing = require("../Models/Listing1");
+const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
 
 require("dotenv").config();
@@ -25,6 +26,10 @@ exports.createListing = async (req, res) => {
       }));
     }
 
+    // Fetch user verification status
+    const user = await User.findById(sellerInfo?.id || sellerInfo?._id);
+    const isUserVerified = user ? !!user.isUserVerified : false;
+
     // const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); //3dayshrs
 
 
@@ -38,6 +43,7 @@ exports.createListing = async (req, res) => {
       sellerInfo,
       school_name: sellerInfo?.school_name,
       location_city: sellerInfo?.location_city,
+      isUserVerified,
       // expiresAt,
     });
 
