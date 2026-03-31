@@ -46,7 +46,7 @@ exports.getAllPublicStores = async (req, res) => {
             name: { $exists: true, $ne: "" },
             school_name: { $exists: true, $ne: "" },
             course: { $exists: true, $ne: "" }
-        }).select("name username profilePhoto school_name course location_city");
+        }).select("name username profilePhoto school_name course location_city views");
 
         console.log(`[StoreDirectory] Found ${users.length} active sellers with complete profiles.`);
         res.status(200).json(users);
@@ -229,6 +229,14 @@ exports.getUserStore = async (req, res) => {
         if (!user) {
             console.log(`[StoreAccess] No user found for: ${identifier}`);
             return res.status(404).json({ message: "Store not found." });
+        }
+
+        // Increment Store View Count
+        try {
+            await User.findByIdAndUpdate(user._id, { $inc: { views: 1 } });
+            user.views = (user.views || 0) + 1; // Update local user object for current response
+        } catch (incErr) {
+            console.warn("Failed to increment store views:", incErr.message);
         }
 
         const userId = user._id.toString();

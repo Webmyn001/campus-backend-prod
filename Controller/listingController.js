@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Listing = require("../Models/Listing1");
 const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
@@ -87,7 +88,16 @@ exports.getListingById = async (req, res) => {
     if (!listing) {
       return res.status(404).json({ message: "Listing not found" });
     }
-    res.status(200).json(listing);
+
+    // Fetch Seller Views (Store Views)
+    const sellerId = listing.sellerInfo?.id || listing.sellerInfo?._id || listing.sellerInfo;
+    let sellerViews = 0;
+    if (sellerId && mongoose.Types.ObjectId.isValid(sellerId)) {
+        const seller = await User.findById(sellerId).select("views");
+        sellerViews = seller ? (seller.views || 0) : 0;
+    }
+
+    res.status(200).json({ ...listing.toObject(), sellerViews });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch listing", error });
   }

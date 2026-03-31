@@ -215,8 +215,72 @@ const getGlobalStats = async (req, res) => {
   }
 };
 
+/**
+ * @desc Get trending items (Top 10 overall in last 7 days)
+ */
+const getTrendingItems = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 12;
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
+
+    const trendingAgg = await Analytics.aggregate([
+      { 
+        $match: { 
+          date: { $gte: sevenDaysAgoStr }
+        } 
+      },
+      {
+        $group: {
+          _id: "$productId",
+          weeklyViews: { $sum: "$views" },
+          type: { $first: "$type" },
+          sellerId: { $first: "$sellerId" }
+        }
+      },
+      { $sort: { weeklyViews: -1 } },
+      { $limit: limit * 3 } // Fetch more to handle ties via randomization
+    ]);
+
+    // Shuffle ties in Javascript for fair exposure
+    trendingAgg.sort((a, b) => {
+      if (b.weeklyViews !== a.weeklyViews) {
+        return b.weeklyViews - a.weeklyViews;
+      }
+      return Math.random() - 0.5;
+    });
+
+    const limitedTrending = trendingAgg.slice(0, limit);
+
+    const result = [];
+    for (const item of limitedTrending) {
+      let data = null;
+      if (item.type === "viplisting") {
+        data = await VipListing.findById(item._id);
+      } else {
+        data = await Listing.findById(item._id);
+      }
+
+      if (data) {
+        result.push({
+          ...data.toObject(),
+          weeklyViews: item.weeklyViews,
+          type: item.type === "viplisting" ? "service" : "community"
+        });
+      }
+    }
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error("Get Trending Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   trackEvent,
   getUserStats,
   getGlobalStats,
+  getTrendingItems,
 };

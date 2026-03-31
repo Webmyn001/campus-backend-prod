@@ -72,6 +72,10 @@ const userSchema = new mongoose.Schema({
     enum: ["user", "admin"],
     default: "user",
   },
+  views: {
+    type: Number,
+    default: 0,
+  },
 });
 
 // Virtual field for formatted "memberSince"
