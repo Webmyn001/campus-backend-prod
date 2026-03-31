@@ -62,6 +62,7 @@ exports.createProduct = async (req, res) => {
             sellerName: admin.name,
             sellerWhatsApp: admin.whatsapp,
             sellerImage: admin.profilePhoto?.url,
+            sellerId: admin._id,
             school_name: admin.school_name,
             location_city: admin.location_city,
             // Course and Level are omitted for admins as requested
@@ -93,7 +94,21 @@ exports.getAllProducts = async (req, res) => {
 // Get Single Product
 exports.getProductById = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
+        let product = await Product.findById(req.params.id);
+
+        if (!product && req.params.id.length === 10) {
+            // Fallback: search by short ID (last 10 characters of MongoDB _id)
+            product = await Product.findOne({
+                $expr: {
+                    $regexMatch: {
+                        input: { $toString: "$_id" },
+                        regex: req.params.id + "$",
+                        options: "i"
+                    }
+                }
+            });
+        }
+
         if (!product) return res.status(404).json({ success: false, message: "Product not found" });
         res.status(200).json({ success: true, product });
     } catch (error) {

@@ -58,6 +58,15 @@ const productSchema = new mongoose.Schema({
     sellerImage: { type: String },
     sellerCourse: { type: String },
     sellerLevel: { type: String },
+    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    views: {
+        type: Number,
+        default: 0,
+    },
+    whatsappClicks: {
+        type: Number,
+        default: 0,
+    },
 
     postedAt: {
         type: Date,

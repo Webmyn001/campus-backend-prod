@@ -1,6 +1,6 @@
+require("dotenv").config(); // ✅ Always top to provide config to all imports
 const express = require("express");
 const mongoose = require("mongoose");
-const dotenv = require("dotenv");
 const authRoutes = require("./Routes/authRoutes");
 const listingRoutes = require("./Routes/listingRoutes");
 const proListingRoutes = require("./Routes/proListingRoutes");
@@ -9,18 +9,17 @@ const profileRoutes = require("./Routes/profileRoutes");
 const reviewRoutes = require("./Routes/reviewRoutes");
 const contactRoutes = require("./Routes/contactRoutes");
 const reportRoutes = require("./Routes/reportRoutes");
-const paymentRoutes = require("./Routes/paymentRoutes")
+const paymentRoutes = require("./Routes/paymentRoutes");
 const userRoutes = require("./Routes/userRoutes");
 
 const adminRoutes = require("./Routes/adminRoutes");
 const productRoutes = require("./Routes/productRoutes");
 const storePreviewRoutes = require("./Routes/storePreviewRoutes");
 
+const analyticsRoutes = require("./Routes/analyticsRoutes");
+
 require("./jobs/cleanupExpiredListings");
 const cors = require("cors")
-
-
-dotenv.config();
 
 const app = express();
 
@@ -30,24 +29,21 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 // Enable CORS
 const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
   "http://localhost:3000",
   "http://localhost:8080",
   "https://campuscrave-lu04.onrender.com",
   "https://www.campuscrave.ng",
-  "https://campuscrave.ng"
+  "https://campuscrave.ng",
+  "https://campus-plum.vercel.app"
 ];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`CORS blocked for origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  optionsSuccessStatus: 204 // standard for OPTIONS success
 }));
 
 
@@ -65,20 +61,41 @@ app.use("/api/admin", adminRoutes); // Add admin routes
 app.use("/api/products", productRoutes); // Add admin-managed product routes
 app.use("/api/public", storePreviewRoutes); // Add public preview routes
 app.use("/api", paymentRoutes);
+app.use("/api/analytics", analyticsRoutes); // Add analytics routes
 
-
-
-
+// ✅ Global Error Handler to catch 500s and log them
+app.use((err, req, res, next) => {
+  console.error("❌ INTERNAL SERVER ERROR:", {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method
+  });
+  res.status(500).json({ 
+    success: false, 
+    message: "Internal Server Error", 
+    error: process.env.NODE_ENV === "development" ? err.message : undefined 
+  });
+});
 
 // Connect to MongoDB and start server
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI is not defined in environment variables!");
+}
+
 mongoose
-  .connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .connect(process.env.MONGO_URI || "", { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
-    console.log("Connected to MongoDB");
-    app.listen(5000, () => {
-      console.log("Server running on port 5000");
-    });
+    console.log("✅ Connected to MongoDB");
+    // Ensure we are listening only in local dev; Vercel uses the exported 'app'
+    if (process.env.NODE_ENV !== "production") {
+      app.listen(5000, () => {
+        console.log("🚀 Server running on port 5000");
+      });
+    }
   })
   .catch((error) => {
-    console.error("MongoDB connection error:", error);
+    console.error("❌ MongoDB connection error:", error);
   });
+
+module.exports = app;

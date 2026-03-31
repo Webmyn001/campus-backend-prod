@@ -21,8 +21,22 @@ router.get("/store/:identifier", async (req, res) => {
             }).select("name username profilePhoto");
         }
 
+        if (!user && identifier.length === 10) {
+            // Fallback: search by short ID (last 10 characters of MongoDB _id)
+            user = await User.findOne({
+                $expr: {
+                    $regexMatch: {
+                        input: { $toString: "$_id" },
+                        regex: identifier + "$",
+                        options: "i"
+                    }
+                }
+            }).select("name username profilePhoto");
+        }
+
         if (!user) {
             // Return a default fallback HTML instead of 404 so sharing doesn't completely break
+            const fallbackRedirect = process.env.CLIENT_URL || "https://www.campuscrave.ng/";
             return res.send(`
                 <!DOCTYPE html>
                 <html>
@@ -30,7 +44,7 @@ router.get("/store/:identifier", async (req, res) => {
                     <title>Store Not Found | Campus Crave</title>
                     <meta property="og:title" content="Store Not Found | Campus Crave" />
                     <meta property="og:description" content="This store could not be found." />
-                    <script>window.location.href = "https://www.campuscrave.ng/";</script>
+                    <script>window.location.href = "${fallbackRedirect}";</script>
                 </head>
                 <body>Redirecting to Campus Crave...</body>
                 </html>
@@ -38,7 +52,7 @@ router.get("/store/:identifier", async (req, res) => {
         }
 
         const userId = user._id.toString();
-        const storeName = user.username ? `${user.username}'s Store` : `${user.name.split(' ')[0]}'s Store`;
+        const storeName = user.username ? `@${user.username}'s Store` : `${user.name.split(' ')[0]}'s Store`;
         const storeTitle = `${storeName} | Campus Crave`;
         const storeDescription = `Check out all the products and services from ${user.name} on Campus Crave.`;
 
@@ -74,7 +88,8 @@ router.get("/store/:identifier", async (req, res) => {
             }
         }
 
-        const frontendUrl = `https://www.campuscrave.ng/store/${user.username || user._id}`;
+        const clientUrl = process.env.CLIENT_URL || "https://www.campuscrave.ng";
+        const frontendUrl = `${clientUrl}/store/${user.username || user._id}`;
 
         // Generate static HTML with Open Graph tags
         const html = `

@@ -64,6 +64,14 @@ const listingSchema = new mongoose.Schema({
     type: Object, // Seller information
     required: [true, "Seller info is required"],
   },
+  views: {
+    type: Number,
+    default: 0,
+  },
+  whatsappClicks: {
+    type: Number,
+    default: 0,
+  },
 
 
   //   expiresAt: {

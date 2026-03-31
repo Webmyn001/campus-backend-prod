@@ -1,11 +1,56 @@
 const axios = require("axios");
 const mongoose = require("mongoose");
 const Subscription = require("../Models/Subscription");
+const User = require("../Models/User");
 const Setting = require("../Models/Setting");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
 
 dotenv.config();
+
+// ==========================
+// ✅ Create Manual Subscription (Admin Only)
+// ==========================
+const createManualSubscription = async (req, res) => {
+  try {
+    const { email, plan } = req.body;
+    if (!email || !plan) {
+      return res.status(400).json({ success: false, message: "Email and Plan are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const validityInterval = plan === "starter" ? 1 : 30;
+    const now = new Date();
+
+    const subscription = new Subscription({
+      userId: user._id,
+      userEmail: user.email,
+      userName: user.name,
+      plan,
+      amountPaid: 0,
+      currency: "NGN",
+      paymentStatus: "successful",
+      paystackRef: `MANUAL_ADMIN_GIFT_${Date.now()}`,
+      validityInterval,
+      expiresAt: new Date(now.getTime() + validityInterval * 24 * 60 * 60 * 1000),
+    });
+
+    await subscription.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Manual subscription granted successfully",
+      subscription,
+    });
+  } catch (err) {
+    console.error("❌ createManualSubscription error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 // ==========================
 // ✅ Paystack Verify Payment
@@ -221,10 +266,32 @@ const getPromoStatus = async (_req, res) => {
   }
 };
 
+// ==========================
+// ✅ Delete a subscription
+// ==========================
+const deleteSubscription = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Subscription ID is required" });
+
+    const deleted = await Subscription.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Subscription not found" });
+    }
+
+    res.json({ success: true, message: "Subscription deleted successfully" });
+  } catch (err) {
+    console.error("Delete Subscription Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   verifyPayment,
   paystackWebhook,
   getAllSubscriptions,
   getUserStatus,
   getPromoStatus,
+  deleteSubscription,
+  createManualSubscription,
 };

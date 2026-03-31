@@ -1,7 +1,10 @@
+const mongoose = require("mongoose");
 const User = require("../Models/User");
 const Listing = require("../Models/Listing1");
 const VipListing = require("../Models/vipListing");
 const Product = require("../Models/Product");
+const Subscription = require("../Models/Subscription");
+const Setting = require("../Models/Setting");
 const cloudinary = require("../config/cloudinary");
 
 // Get all Users
@@ -12,6 +15,44 @@ exports.getAllUsers = async (req, res) => {
     } catch (error) {
         console.error("GetAllUsers Error:", error);
         res.status(500).json({ message: "Failed to fetch users" });
+    }
+};
+
+// Get All Public Stores
+exports.getAllPublicStores = async (req, res) => {
+    try {
+        // 1. Get unique seller IDs from both regular and VIP listing collections
+        // We check for both .id and ._id variations used in the sellerInfo object
+        const [regSellersId, regSellersUnderscoreId, vipSellersId, vipSellersUnderscoreId] = await Promise.all([
+            Listing.distinct("sellerInfo.id"),
+            Listing.distinct("sellerInfo._id"),
+            VipListing.distinct("sellerInfo.id"),
+            VipListing.distinct("sellerInfo._id")
+        ]);
+
+        // Combine and filter to get a unique set of IDs
+        const allSellerIds = [...new Set([
+            ...regSellersId,
+            ...regSellersUnderscoreId,
+            ...vipSellersId,
+            ...vipSellersUnderscoreId
+        ])].filter(id => id && mongoose.Types.ObjectId.isValid(id.toString()));
+
+        // 2. Find users who have listings AND have complete profiles
+        // Complete profile = name, username, school_name, and course are all present
+        const users = await User.find({
+            _id: { $in: allSellerIds },
+            username: { $exists: true, $ne: "" },
+            name: { $exists: true, $ne: "" },
+            school_name: { $exists: true, $ne: "" },
+            course: { $exists: true, $ne: "" }
+        }).select("name username profilePhoto school_name course location_city");
+
+        console.log(`[StoreDirectory] Found ${users.length} active sellers with complete profiles.`);
+        res.status(200).json(users);
+    } catch (error) {
+        console.error("GetAllPublicStores Error:", error);
+        res.status(500).json({ message: "Failed to fetch stores" });
     }
 };
 
@@ -158,56 +199,103 @@ exports.getUserStore = async (req, res) => {
     try {
         // 1. Find user by either _id or username
         let user;
-        if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
-            // It's a valid ObjectId
-            user = await User.findById(identifier).select("-password -email -phone -whatsapp");
-        }
-
-        if (!user) {
-            // Try searching by username (case-insensitive)
-            user = await User.findOne({
-                username: { $regex: new RegExp(`^${identifier}$`, 'i') }
-            }).select("-password -email -phone -whatsapp");
-        }
-
-        if (!user && identifier.length === 10) {
-            // Fallback: search by short ID (last 10 characters of MongoDB _id)
-            // Use $expr with $toString to allow regex matching on the ObjectId field
-            user = await User.findOne({
-                $expr: {
-                    $regexMatch: {
-                        input: { $toString: "$_id" },
-                        regex: identifier + "$",
-                        options: "i"
+        console.log(`[StoreAccess] Fetching store for identifier: ${identifier}`);
+        
+        try {
+            if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
+                user = await User.findById(identifier).select("-password -email -phone -whatsapp");
+            }
+            if (!user) {
+                user = await User.findOne({
+                    username: { $regex: new RegExp(`^${identifier}$`, 'i') }
+                }).select("-password -email -phone -whatsapp");
+            }
+            if (!user && identifier.length === 10) {
+                user = await User.findOne({
+                    $expr: {
+                        $regexMatch: {
+                            input: { $toString: "$_id" },
+                            regex: identifier + "$",
+                            options: "i"
+                        }
                     }
-                }
-            }).select("-password -email -phone -whatsapp");
+                }).select("-password -email -phone -whatsapp");
+            }
+        } catch (findUserErr) {
+            console.error("❌ Find User Error:", findUserErr);
+            throw new Error(`Failed to find user by identifier: ${findUserErr.message}`);
         }
 
         if (!user) {
+            console.log(`[StoreAccess] No user found for: ${identifier}`);
             return res.status(404).json({ message: "Store not found." });
         }
 
         const userId = user._id.toString();
 
-        // 2. Fetch Community Listings (Products)
-        // SellerInfo stores ID differently across schemas, checking common patterns
-        const communityListings = await Listing.find({
-            $or: [
-                { "sellerInfo.id": userId },
-                { "sellerInfo._id": userId },
-                { "sellerInfo": userId } // Just in case it's a string ref
-            ]
-        }).sort({ postedAt: -1 });
+        // 2. CHECK SUBSCRIPTION OR PROMO STATUS
+        let activeSub = null;
+        let promoSetting = null;
 
-        // 3. Fetch VIP Listings (Business Services)
-        const businessListings = await VipListing.find({
-            $or: [
-                { "sellerInfo.id": userId },
-                { "sellerInfo._id": userId },
-                { "sellerInfo": userId }
-            ]
-        }).sort({ postedAt: -1 });
+        try {
+            [activeSub, promoSetting] = await Promise.all([
+                Subscription.findOne({
+                    userId: new mongoose.Types.ObjectId(userId),
+                    plan: "premium",
+                    paymentStatus: "successful",
+                    expiresAt: { $gte: new Date() }
+                }),
+                Setting.findOne({ key: "isPromoActive" })
+            ]);
+        } catch (subCheckErr) {
+            console.error("❌ Subscription/Promo Check Error:", subCheckErr);
+            throw new Error(`Failed to check subscription: ${subCheckErr.message}`);
+        }
+
+        const isPromoActive = promoSetting ? promoSetting.value === true : false;
+        
+        console.log(`[StoreAccess] Result: User: ${userId}, hasSub: ${!!activeSub}, isPromo: ${isPromoActive}`);
+
+        // If neither is true, restrict access
+        if (!activeSub && !isPromoActive) {
+            console.log(`[StoreAccess] DENIED for ${user.username} (${userId})`);
+            return res.status(403).json({ 
+                message: "This store's personal link is currently inactive.", 
+                code: "STORE_INACTIVE",
+                isOwner: String(req.query.viewerId) === String(userId),
+                debug: {
+                    hasActiveSub: !!activeSub,
+                    isPromoActive: isPromoActive,
+                    userIdMatched: userId
+                }
+            });
+        }
+
+        // 3. Fetch Community Listings (Products)
+        let communityListings = [];
+        let businessListings = [];
+
+        try {
+            [communityListings, businessListings] = await Promise.all([
+                Listing.find({
+                    $or: [
+                        { "sellerInfo.id": userId },
+                        { "sellerInfo._id": userId },
+                        { "sellerInfo": userId }
+                    ]
+                }).sort({ postedAt: -1 }),
+                VipListing.find({
+                    $or: [
+                        { "sellerInfo.id": userId },
+                        { "sellerInfo._id": userId },
+                        { "sellerInfo": userId }
+                    ]
+                }).sort({ postedAt: -1 })
+            ]);
+        } catch (fetchListingsErr) {
+            console.error("❌ Fetch Listings Error:", fetchListingsErr);
+            throw new Error(`Failed to fetch listings: ${fetchListingsErr.message}`);
+        }
 
         // 4. Return aggregated data
         res.status(200).json({

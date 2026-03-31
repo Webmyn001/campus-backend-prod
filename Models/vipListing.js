@@ -81,6 +81,14 @@ const ViplistingSchema = new mongoose.Schema({
     lowercase: true,
     trim: true,
   },
+  views: {
+    type: Number,
+    default: 0,
+  },
+  whatsappClicks: {
+    type: Number,
+    default: 0,
+  },
 });
 
 // Virtual field for formatted "postedAt" (e.g., "YYYY-MM-DD HH:mm")

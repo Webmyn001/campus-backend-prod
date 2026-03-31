@@ -5,17 +5,20 @@ const {
     updateUser,
     deleteUser,
     getUserStore,
+    getAllPublicStores,
 } = require("../Controller/userController");
 
 const authMiddleware = require("../Middleware/auth");
 
 const router = express.Router();
 
-// Get All Users
 router.get("/", authMiddleware, getAllUsers);
 
+// Get All Public Stores (Public)
+router.get("/public/all-stores", getAllPublicStores);
+
 // Get User Store (Public)
-router.get("/store/:identifier", getUserStore);
+router.get("/public/store/:identifier", getUserStore);
 
 // Get User by ID
 router.get("/:id", authMiddleware, getUserById);

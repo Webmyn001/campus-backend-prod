@@ -4,7 +4,9 @@ const {
   getAllSubscriptions,
   getUserStatus,
   paystackWebhook,
-  getPromoStatus
+  getPromoStatus,
+  deleteSubscription,
+  createManualSubscription
 } = require("../Controller/paymentController");
 const { checkSubscriptionActive } = require("../Middleware/checkSubscription");
 
@@ -29,4 +31,8 @@ router.get("/userplans", getAllSubscriptions);
 router.get("/status", getUserStatus);
 router.get("/promo-status", getPromoStatus);
 
-module.exports = router;   
+router.delete("/subscribers/:id", deleteSubscription);
+
+router.post("/subscribers/manual", createManualSubscription);
+
+module.exports = router;

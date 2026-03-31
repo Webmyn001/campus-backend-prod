@@ -69,7 +69,21 @@ exports.getListingById = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const listing = await Listing.findById(id);
+    let listing = await Listing.findById(id);
+
+    if (!listing && id.length === 10) {
+      // Fallback: search by short ID (last 10 characters of MongoDB _id)
+      listing = await Listing.findOne({
+        $expr: {
+          $regexMatch: {
+            input: { $toString: "$_id" },
+            regex: id + "$",
+            options: "i"
+          }
+        }
+      });
+    }
+
     if (!listing) {
       return res.status(404).json({ message: "Listing not found" });
     }
