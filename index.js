@@ -23,9 +23,9 @@ const cors = require("cors")
 
 const app = express();
 
-// Increase body size limit to handle base64 images (e.g. up to 10MB)
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
+// Increase body size limit to handle base64 images (e.g. up to 4.5mb to match Vercel)
+app.use(express.json({ limit: "4.5mb" }));
+app.use(express.urlencoded({ limit: "4.5mb", extended: true }));
 
 // Enable CORS
 const allowedOrigins = [

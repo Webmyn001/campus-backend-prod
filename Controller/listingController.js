@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Listing = require("../Models/Listing1");
+const VipListing = require("../Models/vipListing");
 const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
 
@@ -151,5 +152,37 @@ exports.deleteListing = async (req, res) => {
   } catch (error) {
     console.error("DeleteListing Error:", error);
     res.status(500).json({ message: "Failed to delete listing", error });
+  }
+};
+
+// Get current user's listings (Aggregated)
+exports.getMyListings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [communityListings, featuredListings] = await Promise.all([
+      Listing.find({
+        $or: [
+          { "sellerInfo.id": userId },
+          { "sellerInfo._id": userId },
+          { "sellerInfo": userId }
+        ]
+      }).sort({ createdAt: -1 }),
+      VipListing.find({
+        $or: [
+          { "sellerInfo.id": userId },
+          { "sellerInfo._id": userId },
+          { "sellerInfo": userId }
+        ]
+      }).sort({ createdAt: -1 })
+    ]);
+
+    res.status(200).json({
+      featured: featuredListings,
+      community: communityListings
+    });
+  } catch (error) {
+    console.error("❌ getMyListings Error:", error);
+    res.status(500).json({ message: "Failed to fetch your listings", error });
   }
 };

@@ -65,17 +65,7 @@ const verifyPayment = async (req, res) => {
 
     const now = new Date();
 
-    // Prevent duplicate subscriptions
-    const existing = await Subscription.findOne({ paystackRef: reference });
-    if (existing) {
-      return res.json({
-        success: true,
-        message: "Subscription already exists or pending verification",
-        subscription: existing,
-      });
-    }
-
-    // Verify transaction with Paystack
+    // Verify transaction with Paystack FIRST (before duplicate check)
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -86,16 +76,42 @@ const verifyPayment = async (req, res) => {
     const data = response.data?.data;
     if (!data) throw new Error("Invalid Paystack response");
 
+    const paystackRef = data.reference; // Paystack's canonical reference
+    const isSuccess = data.status === "success";
+
     console.log("🔹 Paystack Verify Response:", {
       frontendRef: reference,
-      paystackRef: data.reference,
+      paystackRef,
       status: data.status,
     });
+
+    // Prevent duplicate subscriptions using Paystack's canonical reference
+    const existing = await Subscription.findOne({ paystackRef });
+    if (existing) {
+      // If it already exists but is still pending, upgrade it to successful now
+      if (isSuccess && existing.paymentStatus !== "successful") {
+        const upgraded = await Subscription.findByIdAndUpdate(
+          existing._id,
+          { $set: { paymentStatus: "successful", amountPaid: data.amount / 100, currency: data.currency } },
+          { new: true }
+        );
+        return res.json({
+          success: true,
+          message: "Payment verified! Your plan is now active.",
+          subscription: upgraded,
+        });
+      }
+      return res.json({
+        success: true,
+        message: "Payment verified! Your plan is now active.",
+        subscription: existing,
+      });
+    }
 
     // Determine plan validity
     const validityInterval = plan === "starter" ? 1 : 30;
 
-    // Save subscription
+    // Save subscription — immediately mark as successful if Paystack confirms it
     const subscription = new Subscription({
       userId,
       userEmail: userEmail || data.customer.email.toLowerCase().trim(),
@@ -103,17 +119,21 @@ const verifyPayment = async (req, res) => {
       plan,
       amountPaid: data.amount / 100,
       currency: data.currency,
-      paymentStatus: "pending",
-      paystackRef: data.reference, // must match webhook
-      frontendRef: reference,      // optional
+      paymentStatus: isSuccess ? "successful" : "pending",
+      paystackRef,           // Paystack's canonical reference (matches webhook)
+      frontendRef: reference, // frontend-generated reference (optional)
       expiresAt: new Date(now.getTime() + validityInterval * 24 * 60 * 60 * 1000),
     });
 
     await subscription.save();
 
+    console.log(`✅ Subscription saved with status: ${subscription.paymentStatus}`);
+
     res.status(201).json({
       success: true,
-      message: "Subscription created. Waiting for webhook confirmation.",
+      message: isSuccess
+        ? "Payment verified! Your plan is now active."
+        : "Payment received. Awaiting confirmation.",
       subscription,
     });
   } catch (err) {

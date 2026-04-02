@@ -5,6 +5,7 @@ const {
   getListingById,
   updateListing,
   deleteListing,
+  getMyListings,
 } = require("../Controller/listingController");
 const authMiddleware = require("../Middleware/auth");
 
@@ -15,6 +16,9 @@ router.post("/", authMiddleware, createListing);
 
 // Get all listings
 router.get("/", getAllListings);
+
+// Get current user's listings
+router.get("/mine", authMiddleware, getMyListings);
 
 // Get a single listing by ID
 router.get("/:id", getListingById);
