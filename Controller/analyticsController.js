@@ -273,8 +273,12 @@ const getTrendingItems = async (req, res) => {
 
     res.json({ success: true, data: result });
   } catch (err) {
-    console.error("Get Trending Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("❌ DETAILED GET TRENDING ERROR:", {
+      message: err.message,
+      stack: err.stack,
+      query: req.query
+    });
+    res.status(500).json({ success: false, message: "Server error", internalError: err.message });
   }
 };
 
