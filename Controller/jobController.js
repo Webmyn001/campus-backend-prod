@@ -24,33 +24,40 @@ exports.fetchJobsFromAPI = async (req, res) => {
             const url = `https://api.adzuna.com/v1/api/jobs/ng/search/1?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_API_KEY}&results_per_page=15&what=${encodeURIComponent(term)}`;
             
             try {
+                console.log(`🔍 Syncing ${term} from Adzuna...`);
                 const response = await axios.get(url);
                 const adzunaJobs = response.data.results || [];
+                console.log(`📦 Found ${adzunaJobs.length} results for ${term}`);
 
                 for (const adjob of adzunaJobs) {
-                    // Check if job already exists by externalId
                     const existing = await Job.findOne({ externalId: adjob.id });
                     if (existing) continue;
 
-                    // Mapping Adzuna data to our Job Schema
+                    // Determine Job Type
+                    let jobType = "Remote";
+                    const contract = adjob.contract_time || "";
+                    if (contract.includes("full_time")) jobType = "Onsite";
+                    if (term.toLowerCase().includes("intern")) jobType = "Internship";
+                    if (term.toLowerCase().includes("freelance")) jobType = "Freelance";
+
                     await Job.create({
                         title: adjob.title.replace(/<\/?[^>]+(>|$)/g, "").trim(),
-                        company: adjob.company?.display_name || "Unknown Company",
+                        company: adjob.company?.display_name || "Verified Partner",
                         location: adjob.location?.display_name || "Nigeria",
-                        type: adjob.contract_time === "full_time" ? "Onsite" : "Remote",
+                        type: jobType,
                         category: term.toUpperCase(),
                         description: adjob.description.replace(/<\/?[^>]+(>|$)/g, "").trim(),
                         applyUrl: adjob.redirect_url,
                         salary: adjob.salary_min ? `₦${adjob.salary_min.toLocaleString()}` : "Negotiable",
                         source: "Adzuna",
                         externalId: adjob.id,
-                        status: "pending", // All fetched jobs are pending by default
-                        postedAt: new Date(adjob.created)
+                        status: "pending",
+                        postedAt: adjob.created ? new Date(adjob.created) : new Date()
                     });
                     totalCreated++;
                 }
             } catch (error) {
-                console.error(`Error fetching ${term} skills:`, error.message);
+                console.error(`❌ Error syncing ${term}:`, error.response?.data || error.message);
             }
         }
 
@@ -122,6 +129,18 @@ exports.deleteJob = async (req, res) => {
         const { id } = req.params;
         await Job.findByIdAndDelete(id);
         res.status(200).json({ success: true, message: "Job deleted successfully." });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+// Admin Action: Manual Post
+exports.createManualJob = async (req, res) => {
+    try {
+        const jobData = req.body;
+        // Manual jobs are approved by default
+        const job = await Job.create({ ...jobData, status: "approved" });
+        res.status(201).json({ success: true, job });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

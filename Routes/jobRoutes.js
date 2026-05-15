@@ -7,6 +7,7 @@ const {
     updateJobStatus,
     editJob,
     deleteJob,
+    createManualJob,
     trackJobView
 } = require("../Controller/jobController");
 const authMiddleware = require("../Middleware/auth");
@@ -17,6 +18,7 @@ router.post("/track-view/:id", trackJobView);
 
 // Admin Routes (Protected)
 router.get("/pending", authMiddleware, getPendingJobs);
+router.post("/manual", authMiddleware, createManualJob);
 router.put("/status/:id", authMiddleware, updateJobStatus);
 router.put("/edit/:id", authMiddleware, editJob);
 router.delete("/:id", authMiddleware, deleteJob);
