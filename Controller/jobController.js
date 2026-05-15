@@ -1,70 +1,135 @@
 const Job = require("../Models/Job");
 const axios = require("axios");
 
-// Fetch jobs from Adzuna API (Automated Fetcher)
+// --- Helper: Fetch from Remotive (Excellent for Tech/Design/Marketing Gigs) ---
+const syncRemotive = async () => {
+    try {
+        console.log("🔍 Syncing from Remotive API...");
+        const response = await axios.get("https://remotive.com/api/remote-jobs?limit=20");
+        const jobs = response.data.jobs || [];
+        let created = 0;
+
+        for (const rjob of jobs) {
+            const existing = await Job.findOne({ externalId: rjob.id.toString() });
+            if (existing) continue;
+
+            await Job.create({
+                title: rjob.title,
+                company: rjob.company_name,
+                location: rjob.candidate_required_location || "Remote",
+                type: "Remote",
+                category: (rjob.category || "Software").toUpperCase(),
+                description: rjob.description.replace(/<\/?[^>]+(>|$)/g, "").substring(0, 500) + "...",
+                applyUrl: rjob.url,
+                salary: rjob.salary || "Negotiable",
+                source: "Remotive",
+                externalId: rjob.id.toString(),
+                status: "pending",
+                postedAt: new Date(rjob.publication_date)
+            });
+            created++;
+        }
+        console.log(`✅ Remotive Sync: Added ${created} entries.`);
+        return created;
+    } catch (err) {
+        console.error("❌ Remotive Sync Error:", err.message);
+        return 0;
+    }
+};
+
+// --- Helper: Fetch from Adzuna (Nigeria Local) ---
+const syncAdzuna = async () => {
+    const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID;
+    const ADZUNA_API_KEY = process.env.ADZUNA_API_KEY;
+    if (!ADZUNA_APP_ID) return 0;
+
+    const terms = ["internship", "graduate", "developer", "design", "marketing"];
+    let created = 0;
+
+    for (const term of terms) {
+        try {
+            const url = `https://api.adzuna.com/v1/api/jobs/ng/search/1?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_API_KEY}&results_per_page=10&what=${encodeURIComponent(term)}`;
+            const res = await axios.get(url);
+            const adJobs = res.data.results || [];
+
+            for (const adjob of adJobs) {
+                const existing = await Job.findOne({ externalId: adjob.id });
+                if (existing) continue;
+
+                await Job.create({
+                    title: adjob.title.replace(/<\/?[^>]+(>|$)/g, "").trim(),
+                    company: adjob.company?.display_name || "Verified Partner",
+                    location: adjob.location?.display_name || "Nigeria",
+                    type: term.includes("intern") ? "Internship" : "Onsite",
+                    category: term.toUpperCase(),
+                    description: adjob.description.replace(/<\/?[^>]+(>|$)/g, "").trim(),
+                    applyUrl: adjob.redirect_url,
+                    salary: adjob.salary_min ? `₦${adjob.salary_min.toLocaleString()}` : "Negotiable",
+                    source: "Adzuna",
+                    externalId: adjob.id,
+                    status: "pending",
+                    postedAt: new Date(adjob.created)
+                });
+                created++;
+            }
+        } catch (e) { console.error(`Adzuna ${term} error:`, e.message); }
+    }
+    console.log(`✅ Adzuna Sync: Added ${created} entries.`);
+    return created;
+};
+
+// --- Helper: Fetch from The Muse (International Roles) ---
+const syncTheMuse = async () => {
+    try {
+        console.log("🔍 Syncing from The Muse API...");
+        const response = await axios.get("https://www.themuse.com/api/public/jobs?page=1&location=Nigeria&location=Remote");
+        const jobs = response.data.results || [];
+        let created = 0;
+
+        for (const mjob of jobs) {
+            const existing = await Job.findOne({ externalId: mjob.id.toString() });
+            if (existing) continue;
+
+            await Job.create({
+                title: mjob.name,
+                company: mjob.company?.name || "The Muse",
+                location: mjob.locations?.[0]?.name || "Remote",
+                type: "Remote",
+                category: (mjob.categories?.[0]?.name || "General").toUpperCase(),
+                description: mjob.contents.replace(/<\/?[^>]+(>|$)/g, "").substring(0, 500) + "...",
+                applyUrl: mjob.refs?.landing_page,
+                salary: "Negotiable",
+                source: "The Muse",
+                externalId: mjob.id.toString(),
+                status: "pending",
+                postedAt: new Date(mjob.publication_date)
+            });
+            created++;
+        }
+        console.log(`✅ The Muse Sync: Added ${created} entries.`);
+        return created;
+    } catch (err) {
+        console.error("❌ The Muse Sync Error:", err.message);
+        return 0;
+    }
+};
+
+// Main Fetch Controller
 exports.fetchJobsFromAPI = async (req, res) => {
     try {
-        const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID; 
-        const ADZUNA_API_KEY = process.env.ADZUNA_API_KEY; 
+        const adzunaCount = await syncAdzuna();
+        const remotiveCount = await syncRemotive();
+        const museCount = await syncTheMuse();
 
-        if (!ADZUNA_APP_ID || !ADZUNA_API_KEY) {
-            console.warn("⚠️ Adzuna credentials missing. Skipping fetch.");
-            if (res) return res.status(400).json({ success: false, message: "Adzuna credentials missing." });
-            return;
-        }
+        const total = adzunaCount + remotiveCount + museCount;
 
-        const searchTerms = [
-            "software", "internship", "design", "developer", "graduate", 
-            "frontend", "backend", "ui/ux", "graphics", "cybersecurity",
-            "data analysis", "fashion", "social media", "content creator", "tutoring"
-        ];
-        let totalCreated = 0;
-
-        for (const term of searchTerms) {
-            const url = `https://api.adzuna.com/v1/api/jobs/ng/search/1?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_API_KEY}&results_per_page=15&what=${encodeURIComponent(term)}`;
-            
-            try {
-                console.log(`🔍 Syncing ${term} from Adzuna...`);
-                const response = await axios.get(url);
-                const adzunaJobs = response.data.results || [];
-                console.log(`📦 Found ${adzunaJobs.length} results for ${term}`);
-
-                for (const adjob of adzunaJobs) {
-                    const existing = await Job.findOne({ externalId: adjob.id });
-                    if (existing) continue;
-
-                    // Determine Job Type
-                    let jobType = "Remote";
-                    const contract = adjob.contract_time || "";
-                    if (contract.includes("full_time")) jobType = "Onsite";
-                    if (term.toLowerCase().includes("intern")) jobType = "Internship";
-                    if (term.toLowerCase().includes("freelance")) jobType = "Freelance";
-
-                    await Job.create({
-                        title: adjob.title.replace(/<\/?[^>]+(>|$)/g, "").trim(),
-                        company: adjob.company?.display_name || "Verified Partner",
-                        location: adjob.location?.display_name || "Nigeria",
-                        type: jobType,
-                        category: term.toUpperCase(),
-                        description: adjob.description.replace(/<\/?[^>]+(>|$)/g, "").trim(),
-                        applyUrl: adjob.redirect_url,
-                        salary: adjob.salary_min ? `₦${adjob.salary_min.toLocaleString()}` : "Negotiable",
-                        source: "Adzuna",
-                        externalId: adjob.id,
-                        status: "pending",
-                        postedAt: adjob.created ? new Date(adjob.created) : new Date()
-                    });
-                    totalCreated++;
-                }
-            } catch (error) {
-                console.error(`❌ Error syncing ${term}:`, error.response?.data || error.message);
-            }
-        }
-
-        if (res) res.status(200).json({ success: true, message: `Skill Market sync completed. Found ${totalCreated} new opportunities.` });
-        console.log(`✅ Skill Market sync completed. Added ${totalCreated} new entries.`);
+        if (res) res.status(200).json({ 
+            success: true, 
+            message: `Sync completed. Added ${total} new entries.`,
+            breakdown: { adzuna: adzunaCount, remotive: remotiveCount, themuse: museCount }
+        });
     } catch (err) {
-        console.error("❌ Job Controller Error (fetch):", err.message);
+        console.error("❌ Job Sync Error:", err.message);
         if (res) res.status(500).json({ success: false, error: err.message });
     }
 };
