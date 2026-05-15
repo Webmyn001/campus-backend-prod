@@ -23,7 +23,7 @@ const subscriptionSchema = new mongoose.Schema({
 
   plan: {
     type: String,
-    enum: ["starter", "standard", "premium"],
+    enum: ["starter", "standard", "premium", "premium6m"],
     required: true,
     index: true,
   },

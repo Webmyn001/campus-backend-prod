@@ -9,7 +9,7 @@ const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1d" });
 };
 
-console.log("sendEmail import test:", sendEmail)
+
 
 
 
@@ -235,8 +235,16 @@ exports.adminLogin = async (req, res) => {
       user,
     });
   } catch (error) {
-    console.error("Admin Login Error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Admin Login Fatal Error:", {
+        message: error.message,
+        stack: error.stack,
+        email: email
+    });
+    res.status(500).json({ 
+        success: false, 
+        message: "Server error during admin authentication",
+        devError: error.message 
+    });
   }
 };
 

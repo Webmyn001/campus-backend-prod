@@ -43,13 +43,30 @@ exports.getAllPublicStores = async (req, res) => {
         const users = await User.find({
             _id: { $in: allSellerIds },
             username: { $exists: true, $ne: "" },
-            name: { $exists: true, $ne: "" },
-            school_name: { $exists: true, $ne: "" },
-            course: { $exists: true, $ne: "" }
-        }).select("name username profilePhoto school_name course location_city views");
+            name: { $exists: true, $ne: "" }
+        }).select("name username profilePhoto school_name course location_city views isUserVerified");
 
-        console.log(`[StoreDirectory] Found ${users.length} active sellers with complete profiles.`);
-        res.status(200).json(users);
+        let officialViews = 0;
+        try {
+            const setting = await Setting.findOne({ key: "official_store_views" });
+            if (setting) officialViews = setting.value || 0;
+        } catch (e) {}
+
+        const allUsers = [...users, {
+            _id: "official_campuscrave_id",
+            name: "CampusCrave Official",
+            username: "campuscrave",
+            school_name: "Obafemi Awolowo University",
+            location_city: "Awo Hall, OAU",
+            isUserVerified: true,
+            views: officialViews,
+            profilePhoto: { url: "https://campuscrave.ng/campus-crave-logo.png" }
+        }];
+
+        allUsers.sort((a, b) => (b.views || 0) - (a.views || 0));
+
+        console.log(`[StoreDirectory] Found ${allUsers.length} active sellers.`);
+        res.status(200).json(allUsers);
     } catch (error) {
         console.error("GetAllPublicStores Error:", error);
         res.status(500).json({ message: "Failed to fetch stores" });
@@ -227,50 +244,91 @@ exports.getUserStore = async (req, res) => {
         }
 
         if (!user) {
-            console.log(`[StoreAccess] No user found for: ${identifier}`);
-            return res.status(404).json({ message: "Store not found." });
+            if (identifier.toLowerCase() === 'campuscrave') {
+                // Read current official store views before building ghost object
+                let currentOfficialViews = 0;
+                try {
+                    const currentSetting = await Setting.findOne({ key: "official_store_views" });
+                    if (currentSetting) currentOfficialViews = currentSetting.value || 0;
+                } catch (e) {}
+
+                // Return Official Ghost Identity if user doesn't exist in DB
+                user = {
+                    _id: "official_campuscrave_id",
+                    name: "CampusCrave Official",
+                    username: "campuscrave",
+                    school_name: "Obafemi Awolowo University",
+                    location_city: "Awo Hall, OAU",
+                    isUserVerified: true,
+                    role: "admin",
+                    views: currentOfficialViews,
+                    bio: "The official home for safe campus shopping. We help student business owners get more customers with permanent store links and verified badges to grow your business.",
+                    profilePhoto: { url: "/campus-crave-logo.png" }
+                };
+            } else {
+                console.log(`[StoreAccess] No user found for: ${identifier}`);
+                return res.status(404).json({ message: "Store not found." });
+            }
         }
 
         // Increment Store View Count
         try {
-            await User.findByIdAndUpdate(user._id, { $inc: { views: 1 } });
-            user.views = (user.views || 0) + 1; // Update local user object for current response
+            if (user._id === "official_campuscrave_id") {
+                const setting = await Setting.findOneAndUpdate(
+                    { key: "official_store_views" },
+                    { $inc: { value: 1 } },
+                    { upsert: true, new: true }
+                );
+                user.views = setting.value;
+            } else {
+                await User.findByIdAndUpdate(user._id, { $inc: { views: 1 } });
+                user.views = (user.views || 0) + 1; // Update local user object for current response
+            }
         } catch (incErr) {
             console.warn("Failed to increment store views:", incErr.message);
         }
 
         const userId = user._id.toString();
 
+        const isOfficialStore = identifier.toLowerCase() === 'campuscrave' || user.username?.toLowerCase() === 'campuscrave';
+        
         // 2. CHECK SUBSCRIPTION OR PROMO STATUS
         let activeSub = null;
         let promoSetting = null;
 
-        try {
-            [activeSub, promoSetting] = await Promise.all([
-                Subscription.findOne({
-                    userId: new mongoose.Types.ObjectId(userId),
-                    plan: "premium",
-                    paymentStatus: "successful",
-                    expiresAt: { $gte: new Date() }
-                }),
-                Setting.findOne({ key: "isPromoActive" })
-            ]);
-        } catch (subCheckErr) {
-            console.error("❌ Subscription/Promo Check Error:", subCheckErr);
-            throw new Error(`Failed to check subscription: ${subCheckErr.message}`);
+        if (!isOfficialStore) {
+            try {
+                [activeSub, promoSetting] = await Promise.all([
+                    Subscription.findOne({
+                        userId: new mongoose.Types.ObjectId(userId),
+                        plan: "premium",
+                        paymentStatus: "successful",
+                        expiresAt: { $gte: new Date() }
+                    }),
+                    Setting.findOne({ key: "isPromoActive" })
+                ]);
+            } catch (subCheckErr) {
+                console.error("❌ Subscription/Promo Check Error:", subCheckErr);
+                throw new Error(`Failed to check subscription: ${subCheckErr.message}`);
+            }
+        } else {
+            // Bypass for official store
+            promoSetting = await Setting.findOne({ key: "isPromoActive" });
         }
 
         const isPromoActive = promoSetting ? promoSetting.value === true : false;
         
-        console.log(`[StoreAccess] Result: User: ${userId}, hasSub: ${!!activeSub}, isPromo: ${isPromoActive}`);
+        console.log(`[StoreAccess] Result: User: ${userId}, hasSub: ${!!activeSub}, isPromo: ${isPromoActive}, isOfficial: ${isOfficialStore}`);
 
-        // If neither is true, restrict access
-        if (!activeSub && !isPromoActive) {
+        // If neither is true, restrict access (unless it's the official store)
+        if (!activeSub && !isPromoActive && !isOfficialStore) {
             console.log(`[StoreAccess] DENIED for ${user.username} (${userId})`);
             return res.status(403).json({ 
                 message: "This store's personal link is currently inactive.", 
                 code: "STORE_INACTIVE",
                 isOwner: String(req.query.viewerId) === String(userId),
+                userName: user.name,
+                username: user.username,
                 debug: {
                     hasActiveSub: !!activeSub,
                     isPromoActive: isPromoActive,

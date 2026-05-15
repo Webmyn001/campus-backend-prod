@@ -23,7 +23,7 @@ const createManualSubscription = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const validityInterval = plan === "starter" ? 1 : 30;
+    const validityInterval = plan === "starter" ? 1 : (plan === "premium6m" ? 180 : 30);
     const now = new Date();
 
     const subscription = new Subscription({
@@ -109,7 +109,7 @@ const verifyPayment = async (req, res) => {
     }
 
     // Determine plan validity
-    const validityInterval = plan === "starter" ? 1 : 30;
+    const validityInterval = plan === "starter" ? 1 : (plan === "premium6m" ? 180 : 30);
 
     // Save subscription — immediately mark as successful if Paystack confirms it
     const subscription = new Subscription({

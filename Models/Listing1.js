@@ -18,6 +18,10 @@ const listingSchema = new mongoose.Schema({
     type: String,
     required: [true, "Title is required"],
   },
+  category: {
+    type: String,
+    default: "Other Goods"
+  },
   price: {
     type: String,
     required: [true, "Price is required"],
@@ -59,6 +63,16 @@ const listingSchema = new mongoose.Schema({
     type: Date,
     default: Date.now, // Automatically set the postedAt field
     immutable: true, // Prevent this field from being updated after creation
+  },
+  isManaged: {
+    type: Boolean,
+    default: false
+  },
+  ownerName: {
+    type: String,
+  },
+  ownerLocation: {
+    type: String,
   },
   sellerInfo: {
     type: Object, // Seller information

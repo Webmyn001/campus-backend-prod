@@ -17,8 +17,12 @@ exports.createVIPListing = async (req, res) => {
     workingHours,
     businessEmail,
     images,
+    category,
     contactMethod,
-    sellerInfo
+    sellerInfo,
+    isManaged,
+    ownerName,
+    ownerLocation
   } = req.body;
 
   try {
@@ -38,9 +42,18 @@ exports.createVIPListing = async (req, res) => {
       }));
     }
 
-    // Fetch user verification status
-    const user = await User.findById(sellerInfo?.id || sellerInfo?._id);
-    const isUserVerified = user ? !!user.isUserVerified : false;
+    let isUserVerified = false;
+    const sellerId = sellerInfo?.id || sellerInfo?._id;
+    if (sellerId === "official_campuscrave_id") {
+      isUserVerified = true;
+    } else if (sellerId) {
+      try {
+        const user = await User.findById(sellerId);
+        isUserVerified = user ? !!user.isUserVerified : false;
+      } catch (err) {
+        console.warn("Invalid seller ID format:", sellerId);
+      }
+    }
 
     // Set expiresAt to 1 hour from now (you can adjust)
     // const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days (1 month)
@@ -48,6 +61,7 @@ exports.createVIPListing = async (req, res) => {
 
     const listing = await VipListing.create({
       businessName,
+      category: category || "Other Services",
       address,
       fullDescription,
       workingHours,
@@ -58,6 +72,9 @@ exports.createVIPListing = async (req, res) => {
       school_name: sellerInfo?.school_name,
       location_city: sellerInfo?.location_city,
       isUserVerified,
+      isManaged: isManaged || false,
+      ownerName: ownerName || "",
+      ownerLocation: ownerLocation || "",
       // expiresAt
     });
 
@@ -109,6 +126,26 @@ exports.getVIPListingById = async (req, res) => {
     if (sellerId && mongoose.Types.ObjectId.isValid(sellerId)) {
         const seller = await User.findById(sellerId).select("views");
         sellerViews = seller ? (seller.views || 0) : 0;
+    } else if (sellerId === "official_campuscrave_id" || 
+               listing.sellerInfo?.username === "campuscrave" || 
+               listing.sellerInfo?.name === "CampusCrave Official") {
+        // Find the official account views from both User and Settings
+        try {
+            const [seller, setting] = await Promise.all([
+                User.findOne({ 
+                    $or: [{ username: "campuscrave" }, { name: "CampusCrave Official" }] 
+                }).select("views"),
+                require("../Models/Setting").findOne({ key: "official_store_views" })
+            ]);
+            
+            const userViews = seller ? (seller.views || 0) : 0;
+            const settingViews = setting ? (setting.value || 0) : 0;
+            
+            // Use the higher value or setting views as the source of truth for official store
+            sellerViews = Math.max(userViews, settingViews);
+        } catch (err) {
+            console.error("Error fetching official store views:", err);
+        }
     }
 
     res.status(200).json({ ...listing.toObject(), sellerViews });

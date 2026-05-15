@@ -16,6 +16,10 @@ function formatDateTime(date) {
 const ViplistingSchema = new mongoose.Schema({
 
 
+  category: {
+    type: String,
+    default: "Other Services"
+  },
   images: [
     {
       url: { type: String, required: true },
@@ -35,6 +39,16 @@ const ViplistingSchema = new mongoose.Schema({
     type: Date,
     default: Date.now, // Automatically set the postedAt field
     immutable: true, // Prevent this field from being updated after creation
+  },
+  isManaged: {
+    type: Boolean,
+    default: false
+  },
+  ownerName: {
+    type: String,
+  },
+  ownerLocation: {
+    type: String,
   },
   type: {
     type: String, // Contact method

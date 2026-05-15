@@ -17,8 +17,11 @@ const productRoutes = require("./Routes/productRoutes");
 const storePreviewRoutes = require("./Routes/storePreviewRoutes");
 
 const analyticsRoutes = require("./Routes/analyticsRoutes");
+const cronRoutes = require("./Routes/cronRoutes");
+const jobRoutes = require("./Routes/jobRoutes");
 
 require("./jobs/cleanupExpiredListings");
+const { runWeeklyAnalyticsJob } = require("./jobs/weeklyAnalyticsEmail");
 const cors = require("cors")
 
 const app = express();
@@ -62,6 +65,8 @@ app.use("/api/products", productRoutes); // Add admin-managed product routes
 app.use("/api/public", storePreviewRoutes); // Add public preview routes
 app.use("/api", paymentRoutes);
 app.use("/api/analytics", analyticsRoutes); // Add analytics routes
+app.use("/api/cron", cronRoutes); // Add cron routes for Vercel
+app.use("/api/jobs", jobRoutes); // Add Jobs & Opportunities routes
 
 // ✅ Global Error Handler to catch 500s and log them
 app.use((err, req, res, next) => {
@@ -71,9 +76,9 @@ app.use((err, req, res, next) => {
     url: req.url,
     method: req.method
   });
-  res.status(500).json({ 
-    success: false, 
-    message: "Internal Server Error", 
+  res.status(500).json({
+    success: false,
+    message: "Internal Server Error",
     error: err.message // Temporarily exposing to help fix widespread failure
   });
 });
@@ -87,6 +92,9 @@ mongoose
   .connect(process.env.MONGO_URI || "", { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
     console.log("✅ Connected to MongoDB");
+    // Run any due jobs (e.g. Weekly Analytics if it's Sunday and hasn't run yet)
+    runWeeklyAnalyticsJob().catch(err => console.error("❌ Startup Job Error:", err));
+
     // Ensure we are listening only in local dev; Vercel uses the exported 'app'
     if (process.env.NODE_ENV !== "production") {
       app.listen(5000, () => {

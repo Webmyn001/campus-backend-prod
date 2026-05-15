@@ -7,7 +7,7 @@ exports.createProduct = async (req, res) => {
     try {
         const {
             name, price, description, fullDescription,
-            image, images, category, availability, type
+            image, images, category, availability, type, isManaged, ownerName
         } = req.body;
 
         // Get current user (Admin) for prefilling
@@ -65,6 +65,8 @@ exports.createProduct = async (req, res) => {
             sellerId: admin._id,
             school_name: admin.school_name,
             location_city: admin.location_city,
+            isManaged: isManaged || false,
+            ownerName: ownerName || "",
             // Course and Level are omitted for admins as requested
         };
 
