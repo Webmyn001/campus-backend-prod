@@ -5,7 +5,7 @@ const axios = require("axios");
 const syncRemotive = async () => {
     try {
         console.log("🔍 Syncing from Remotive API...");
-        const response = await axios.get("https://remotive.com/api/remote-jobs?limit=20");
+        const response = await axios.get("https://remotive.com/api/remote-jobs?limit=30");
         const jobs = response.data.jobs || [];
         let created = 0;
 
@@ -123,8 +123,8 @@ exports.fetchJobsFromAPI = async (req, res) => {
 
         const total = adzunaCount + remotiveCount + museCount;
 
-        if (res) res.status(200).json({ 
-            success: true, 
+        if (res) res.status(200).json({
+            success: true,
             message: `Sync completed. Added ${total} new entries.`,
             breakdown: { adzuna: adzunaCount, remotive: remotiveCount, themuse: museCount }
         });

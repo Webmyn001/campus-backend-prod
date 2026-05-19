@@ -1,8 +1,11 @@
 const express = require("express");
-const { trackEvent, getUserStats, getGlobalStats, getTrendingItems } = require("../Controller/analyticsController");
+const { trackEvent, getUserStats, getGlobalStats, getTrendingItems, trackVisit } = require("../Controller/analyticsController");
 const authMiddleware = require("../Middleware/auth");
 
 const router = express.Router();
+
+// Track a unique site visit
+router.post("/visit", trackVisit);
 
 // Track a view or a whatsapp click (Publicly accessible but rate-limited usually)
 router.post("/track", trackEvent);

@@ -19,7 +19,7 @@ const analyticsSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["listing", "viplisting"],
+    enum: ["listing", "viplisting", "admin-product"],
     required: true,
   },
   views: {

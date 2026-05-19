@@ -59,6 +59,12 @@ const listingSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "pending",
+    index: true,
+  },
   postedAt: {
     type: Date,
     default: Date.now, // Automatically set the postedAt field

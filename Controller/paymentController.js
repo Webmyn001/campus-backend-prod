@@ -164,40 +164,65 @@ const paystackWebhook = async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const { reference, amount, currency, customer } = event.data;
+    const { reference, amount, currency, customer, metadata } = event.data;
     console.log(`🔔 Webhook received. Reference: ${reference}, Amount: ${amount}, Email: ${customer?.email}`);
+
+    const plan = metadata?.plan;
+    const userId = metadata?.userId;
 
     // Find subscription
     let sub = await Subscription.findOne({ paystackRef: reference });
 
-    // Retry in case subscription hasn't been saved yet
+    // If not found, try to create it (robustness)
     if (!sub) {
-      console.log(`⏳ Subscription not found, retrying in 2s...`);
-      await new Promise((r) => setTimeout(r, 2000));
-      sub = await Subscription.findOne({ paystackRef: reference });
-    }
+      console.log(`⏳ Subscription not found in DB for ref: ${reference}. Attempting to create from webhook data...`);
+      
+      if (!userId || !plan) {
+        console.warn("⚠️ Webhook missing metadata (plan or userId). Cannot create subscription record.");
+        return res.sendStatus(200);
+      }
 
-    if (!sub) {
-      console.warn(`⚠️ Subscription still not found for reference: ${reference}`);
-      return res.sendStatus(200);
-    }
+      const user = await User.findById(userId);
+      if (!user) {
+        console.error(`❌ User with ID ${userId} not found. Cannot create subscription.`);
+        return res.sendStatus(200);
+      }
 
-    console.log("📦 Found subscription in DB:", sub);
+      const validityInterval = plan === "starter" ? 1 : (plan === "premium6m" ? 180 : 30);
+      
+      sub = new Subscription({
+        userId: user._id,
+        userEmail: user.email,
+        userName: user.name,
+        plan,
+        amountPaid: amount / 100,
+        currency,
+        paymentStatus: "successful",
+        paystackRef: reference,
+        validityInterval,
+        expiresAt: new Date(Date.now() + validityInterval * 24 * 60 * 60 * 1000),
+      });
 
-    const updated = await Subscription.findByIdAndUpdate(
-      sub._id,
-      {
-        $set: {
-          paymentStatus: "successful",
-          amountPaid: amount / 100,
-          currency,
-          userEmail: customer.email.toLowerCase().trim(),
+      await sub.save();
+      console.log("✅ Subscription created and activated via webhook!");
+    } else {
+      // Existing sub found (likely pending), update it
+      console.log("📦 Found existing subscription in DB. Updating to successful...");
+      
+      const updated = await Subscription.findByIdAndUpdate(
+        sub._id,
+        {
+          $set: {
+            paymentStatus: "successful",
+            amountPaid: amount / 100,
+            currency,
+            userEmail: customer.email.toLowerCase().trim(),
+          },
         },
-      },
-      { new: true }
-    );
-
-    console.log("✅ Subscription updated successfully:", updated);
+        { new: true }
+      );
+      console.log("✅ Existing subscription activated successfully!");
+    }
 
     res.sendStatus(200);
   } catch (err) {

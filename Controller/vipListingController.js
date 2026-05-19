@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const VipListing = require("../Models/vipListing");
 const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
+const jwt = require("jsonwebtoken");
 
 
 
@@ -75,6 +76,7 @@ exports.createVIPListing = async (req, res) => {
       isManaged: isManaged || false,
       ownerName: ownerName || "",
       ownerLocation: ownerLocation || "",
+      status: "pending",
       // expiresAt
     });
 
@@ -89,7 +91,23 @@ exports.createVIPListing = async (req, res) => {
 // Get all VIP listings
 exports.getVIPListings = async (req, res) => {
   try {
-    const listings = await VipListing.find();
+    let query = { status: { $ne: "pending" } };
+
+    const authHeader = req.header("Authorization");
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        if (user && user.role === "admin") {
+          query = {};
+        }
+      } catch (err) {
+        // Ignore token errors and treat as public
+      }
+    }
+
+    const listings = await VipListing.find(query);
     res.status(200).json(listings);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch VIP listings", error });
@@ -160,6 +178,11 @@ exports.updateVIPListing = async (req, res) => {
   const updates = req.body;
 
   try {
+    if (req.user.role !== "admin") {
+      delete updates.status;
+      updates.status = "pending";
+    }
+
     const listing = await VipListing.findByIdAndUpdate(id, updates, {
       new: true, // Return the updated document
       runValidators: true, // Ensure validations are applied

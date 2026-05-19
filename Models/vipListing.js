@@ -65,6 +65,12 @@ const ViplistingSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "pending",
+    index: true,
+  },
 
   // expiresAt: {
   //   type: Date,
