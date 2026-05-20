@@ -2,6 +2,7 @@ const express = require("express");
 const {
   signup,
   login,
+  googleAuth,
   verifyEmail,
   resendVerificationEmail,
   forgotPassword,
@@ -19,6 +20,9 @@ router.post("/signup", signup);
 
 // Login Route
 router.post("/login", login);
+
+// Google Auth Route
+router.post("/google", googleAuth);
 
 // Verify Email Route
 router.get("/verify-email", verifyEmail);

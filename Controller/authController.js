@@ -9,9 +9,62 @@ const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1d" });
 };
 
+const { OAuth2Client } = require("google-auth-library");
 
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+exports.googleAuth = async (req, res) => {
+  try {
+    const { token } = req.body; // This is the access_token from useGoogleLogin
 
+    // Fetch user info from Google using the access_token
+    const googleRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (!googleRes.ok) {
+      throw new Error("Failed to fetch user info from Google");
+    }
+
+    const payload = await googleRes.json();
+    const { email, name, picture, sub: googleId } = payload;
+
+    let user = await User.findOne({ email });
+
+    if (user) {
+      if (user.authProvider !== "google") {
+        user.authProvider = "google";
+        user.googleId = googleId;
+        user.isUserVerified = true;
+        user.isVerified = true;
+        user.profilePhoto = { url: picture, public_id: "google_avatar" };
+        await user.save();
+      }
+    } else {
+      user = await User.create({
+        email,
+        name,
+        googleId,
+        authProvider: "google",
+        isUserVerified: true,
+        isVerified: true,
+        profilePhoto: { url: picture, public_id: "google_avatar" },
+      });
+    }
+
+    const jwtToken = generateToken(user._id);
+
+    res.status(200).json({
+      message: "Login successful",
+      token: jwtToken,
+      login: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Google Auth Error:", error);
+    res.status(500).json({ message: "Server error during Google authentication." });
+  }
+};
 
 
 
