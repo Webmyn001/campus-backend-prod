@@ -84,7 +84,6 @@ app.use((err, req, res, next) => {
     error: err.message // Temporarily exposing to help fix widespread failure
   });
 });
-
 // Connect to MongoDB and start server
 if (!process.env.MONGO_URI) {
   console.error("❌ MONGO_URI is not defined in environment variables!");
@@ -94,18 +93,23 @@ mongoose
   .connect(process.env.MONGO_URI || "", { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
     console.log("✅ Connected to MongoDB");
-    // Run any due jobs (e.g. Weekly Analytics if it's Sunday and hasn't run yet)
-    runWeeklyAnalyticsJob().catch(err => console.error("❌ Startup Job Error:", err));
 
-    // Ensure we are listening only in local dev; Vercel uses the exported 'app'
-    if (process.env.NODE_ENV !== "production") {
-      app.listen(5000, () => {
-        console.log("🚀 Server running on port 5000");
-      });
-    }
+    // Run any due jobs (e.g. Weekly Analytics if it's Sunday and hasn't run yet)
+    runWeeklyAnalyticsJob().catch(err =>
+      console.error("❌ Startup Job Error:", err)
+    );
+
+    // Listen locally on 5000, Render uses process.env.PORT
+    const PORT = process.env.PORT || 5000;
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   })
   .catch((error) => {
     console.error("❌ MongoDB connection error:", error);
   });
+
+  
 
 module.exports = app;
