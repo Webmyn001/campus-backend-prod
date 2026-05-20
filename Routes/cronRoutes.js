@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { runWeeklyAnalyticsJob } = require("../jobs/weeklyAnalyticsEmail");
 const { fetchJobsFromAPI } = require("../Controller/jobController");
+const { processBulkEmailQueue } = require("../jobs/bulkEmailQueue");
 
 // GET /api/cron/weekly-analytics
 router.get("/weekly-analytics", async (req, res) => {
@@ -33,6 +34,25 @@ router.get("/sync-jobs", async (req, res) => {
         res.status(200).json({ success: true, message: "Job sync initiated." });
     } catch (err) {
         console.error("❌ Job Sync Cron Error:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+router.get("/bulk-email-daily", async (req, res) => {
+    try {
+        const authHeader = req.headers["authorization"];
+        const cronSecret = process.env.CRON_SECRET;
+
+        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+            return res.status(401).json({ success: false, message: "Invalid cron authorization." });
+        }
+
+        console.log("🔔 Vercel Cron triggered: Daily Bulk Email Processing");
+
+        const result = await processBulkEmailQueue();
+        res.status(200).json({ success: true, message: "Bulk email queue processed.", result });
+    } catch (err) {
+        console.error("❌ Bulk Email Cron Error:", err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

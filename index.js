@@ -19,6 +19,7 @@ const storePreviewRoutes = require("./Routes/storePreviewRoutes");
 const analyticsRoutes = require("./Routes/analyticsRoutes");
 const cronRoutes = require("./Routes/cronRoutes");
 const jobRoutes = require("./Routes/jobRoutes");
+const healthRoutes = require("./Routes/healthRoutes");
 
 require("./jobs/cleanupExpiredListings");
 const { runWeeklyAnalyticsJob } = require("./jobs/weeklyAnalyticsEmail");
@@ -67,6 +68,7 @@ app.use("/api", paymentRoutes);
 app.use("/api/analytics", analyticsRoutes); // Add analytics routes
 app.use("/api/cron", cronRoutes); // Add cron routes for Vercel
 app.use("/api/jobs", jobRoutes); // Add Jobs & Opportunities routes
+app.use("/api", healthRoutes); // Add health/ping routes
 
 // ✅ Global Error Handler to catch 500s and log them
 app.use((err, req, res, next) => {

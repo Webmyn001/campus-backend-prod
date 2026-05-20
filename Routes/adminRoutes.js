@@ -1,5 +1,5 @@
 const express = require("express");
-const { sendBulkEmail, updatePromoStatus, sendTestReport } = require("../Controller/adminController");
+const { sendBulkEmail, continueBulkEmailQueue, getBulkEmailQueueStatus, updatePromoStatus, sendTestReport } = require("../Controller/adminController");
 const { adminLogin } = require("../Controller/authController");
 const authMiddleware = require("../Middleware/auth");
 
@@ -10,6 +10,8 @@ router.post("/login", adminLogin);
 
 // Send Bulk Email (Protected by auth)
 router.post("/bulk-email", authMiddleware, sendBulkEmail);
+router.post("/bulk-email/continue", authMiddleware, continueBulkEmailQueue);
+router.get("/bulk-email/status", authMiddleware, getBulkEmailQueueStatus);
 
 // Update Promo Status
 router.post("/promo-status", authMiddleware, updatePromoStatus);

@@ -4,106 +4,100 @@ const Analytics = require("../Models/Analytics");
 const VipListing = require("../Models/vipListing");
 const Listing = require("../Models/Listing1");
 const Subscription = require("../Models/Subscription");
-const sendEmail = require("../utils/sendEmail");
 const mongoose = require("mongoose");
+const {
+  enqueueBulkEmails,
+  processBulkEmailQueue,
+} = require("../jobs/bulkEmailQueue");
 
 // Send bulk email to list of users or all users
 exports.sendBulkEmail = async (req, res) => {
-    const { subject, body, emails } = req.body;
+  const { subject, body, emails } = req.body;
 
-    if (!subject || !body || !emails || !Array.isArray(emails)) {
-        return res.status(400).json({ message: "Subject, body, and emails array are required." });
-    }
+  if (!subject || !body || !emails || !Array.isArray(emails)) {
+    return res.status(400).json({ message: "Subject, body, and emails array are required." });
+  }
 
-    try {
-        // 1. Fetch users to get names for personalization (optional optimization: only fetch name & email)
-        const users = await User.find({ email: { $in: emails } }).select("email name");
+  try {
+    const users = await User.find({ email: { $in: emails } }).select("email name");
+    const userMap = {};
+    users.forEach((u) => {
+      userMap[u.email] = u.name || "CampusCraver";
+    });
 
-        // Create a map for quick lookup: email -> name
-        const userMap = {};
-        users.forEach((u) => {
-            userMap[u.email] = u.name || "User";
-        });
+    await enqueueBulkEmails(subject, body, emails, userMap);
 
-        // 2. Iterate and Send in Batches
-        let sentCount = 0;
-        let failedCount = 0;
-        const BATCH_SIZE = 10;
-        const BATCH_DELAY = 3000; // 3 seconds between batches
-        const EMAIL_DELAY = 1000; // 1 second between emails within a batch
+    const result = await processBulkEmailQueue();
 
-        for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-            const batch = emails.slice(i, i + BATCH_SIZE);
+    return res.status(200).json({
+      message: "Bulk email queued successfully. Processing has started.",
+      sentToday: result.sentToday,
+      processed: result.processed,
+      sent: result.sent,
+      failed: result.failed,
+      queued: result.queued,
+      remainingCapacity: result.remainingCapacity,
+    });
+  } catch (error) {
+    console.error("Bulk Email Error:", error);
+    res.status(500).json({ message: "Failed to queue bulk emails", error: error.message });
+  }
+};
 
-            for (const email of batch) {
-                const name = userMap[email] || "CampusCraver";
-                const personalizedBody = body.replace(/{{name}}/g, name).replace(/\n/g, "<br>");
+exports.continueBulkEmailQueue = async (req, res) => {
+  try {
+    const result = await processBulkEmailQueue();
+    return res.status(200).json({
+      message: "Bulk email queue processed.",
+      sentToday: result.sentToday,
+      processed: result.processed,
+      sent: result.sent,
+      failed: result.failed,
+      queued: result.queued,
+      remainingCapacity: result.remainingCapacity,
+    });
+  } catch (error) {
+    console.error("Continue Bulk Email Queue Error:", error);
+    res.status(500).json({ message: "Failed to process bulk email queue", error: error.message });
+  }
+};
 
-                // Wrap in official template
-                const emailHtml = `
-                    <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
-                        <div style="text-align: center; margin-bottom: 20px;">
-                            <h1 style="color: #6366f1; margin: 0;">CampusCrave</h1>
-                            <p style="color: #6b7280; font-size: 14px; margin: 5px 0;">Official Communication</p>
-                        </div>
-                        
-                        <div style="margin-bottom: 30px; border-bottom: 2px solid #6366f1; padding-bottom: 15px;">
-                            <h2 style="color: #1f2937; margin: 0; font-size: 18px;">${subject}</h2>
-                        </div>
-                        
-                        <div style="color: #374151; font-size: 15px; margin-bottom: 30px;">
-                            ${personalizedBody}
-                        </div>
+exports.getBulkEmailQueueStatus = async (req, res) => {
+  try {
+    const BulkEmailQueue = require("../Models/BulkEmailQueue");
+    
+    const totalQueued = await BulkEmailQueue.countDocuments({ status: "pending" });
+    const totalSent = await BulkEmailQueue.countDocuments({ status: "sent" });
+    const totalFailed = await BulkEmailQueue.countDocuments({ status: "failed" });
 
-                        <div style="background: #eff6ff; padding: 15px; border-radius: 8px; border: 1px solid #dbeafe; margin-bottom: 25px;">
-                            <p style="margin: 0; font-size: 13px; color: #1e40af;">
-                                <strong>Pro-Tip:</strong> Always check our marketplace for the latest campus deals and verified student services!
-                            </p>
-                        </div>
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sentToday = await BulkEmailQueue.countDocuments({
+      status: "sent",
+      sentAt: { $gte: today },
+    });
 
-                        <p style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-                            Thank you for being a part of the CampusCrave community. We are building the best marketplace for students, by students.
-                        </p>
+    const DAILY_LIMIT = Number(process.env.BULK_EMAIL_DAILY_LIMIT) || 60;
+    const remainingCapacity = Math.max(0, DAILY_LIMIT - sentToday);
 
-                        <p style="margin-bottom: 0;">Best regards,</p>
-                        <p style="margin-top: 5px;"><strong>The CampusCrave Team</strong></p>
-                        
-                        <div style="text-align: center; font-size: 11px; color: #9ca3af; margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px;">
-                            <p>&copy; ${new Date().getFullYear()} CampusCrave Nigeria. All rights reserved.</p>
-                            <p style="margin-top: 5px;">You are receiving this email because you registered on CampusCrave.</p>
-                        </div>
-                    </div>
-                `;
-
-                try {
-                    await sendEmail(email, subject, emailHtml);
-                    sentCount++;
-
-                    // Delay between emails in the same batch
-                    if (batch.indexOf(email) < batch.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, EMAIL_DELAY));
-                    }
-                } catch (error) {
-                    console.error(`Failed to send to ${email}:`, error.message);
-                    failedCount++;
-                }
-            }
-
-            // Delay between batches
-            if (i + BATCH_SIZE < emails.length) {
-                await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
-            }
-        }
-
-        res.status(200).json({
-            message: "Bulk email process completed",
-            sent: sentCount,
-            failed: failedCount,
-        });
-    } catch (error) {
-        console.error("Bulk Email Error:", error);
-        res.status(500).json({ message: "Failed to send bulk emails", error: error.message });
-    }
+    return res.status(200).json({
+      status: "success",
+      queue: {
+        pending: totalQueued,
+        sent: totalSent,
+        failed: totalFailed,
+        total: totalQueued + totalSent + totalFailed,
+      },
+      today: {
+        sent: sentToday,
+        dailyLimit: DAILY_LIMIT,
+        remainingCapacity,
+      },
+    });
+  } catch (error) {
+    console.error("Get Bulk Email Queue Status Error:", error);
+    res.status(500).json({ message: "Failed to get queue status", error: error.message });
+  }
 };
 
 // Update global promo status
