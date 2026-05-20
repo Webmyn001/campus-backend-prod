@@ -62,6 +62,22 @@ exports.continueBulkEmailQueue = async (req, res) => {
   }
 };
 
+exports.getKeepAliveStatus = async (req, res) => {
+    try {
+        const Setting = require("../Models/Setting");
+        const lastPingDoc = await Setting.findOne({ key: "lastPing" });
+        const lastPing = lastPingDoc?.value || null;
+
+        return res.status(200).json({
+            status: "success",
+            lastPing,
+        });
+    } catch (error) {
+        console.error("Get KeepAlive Status Error:", error);
+        return res.status(500).json({ status: "error", message: error.message });
+    }
+};
+
 exports.getBulkEmailQueueStatus = async (req, res) => {
   try {
     const BulkEmailQueue = require("../Models/BulkEmailQueue");
@@ -71,6 +87,43 @@ exports.getBulkEmailQueueStatus = async (req, res) => {
     const totalFailed = await BulkEmailQueue.countDocuments({ status: "failed" });
 
     const today = new Date();
+exports.getBulkEmailQueueStatus = async (req, res) => {
+    try {
+        const BulkEmailQueue = require("../Models/BulkEmailQueue");
+    
+        const totalQueued = await BulkEmailQueue.countDocuments({ status: "pending" });
+        const totalSent = await BulkEmailQueue.countDocuments({ status: "sent" });
+        const totalFailed = await BulkEmailQueue.countDocuments({ status: "failed" });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const sentToday = await BulkEmailQueue.countDocuments({
+            status: "sent",
+            sentAt: { $gte: today },
+        });
+
+        const DAILY_LIMIT = Number(process.env.BULK_EMAIL_DAILY_LIMIT) || 60;
+        const remainingCapacity = Math.max(0, DAILY_LIMIT - sentToday);
+
+        return res.status(200).json({
+            status: "success",
+            queue: {
+                pending: totalQueued,
+                sent: totalSent,
+                failed: totalFailed,
+                total: totalQueued + totalSent + totalFailed,
+            },
+            today: {
+                sent: sentToday,
+                dailyLimit: DAILY_LIMIT,
+                remainingCapacity,
+            },
+        });
+    } catch (error) {
+        console.error("Get Bulk Email Queue Status Error:", error);
+        res.status(500).json({ message: "Failed to get queue status", error: error.message });
+    }
+};
     today.setHours(0, 0, 0, 0);
     const sentToday = await BulkEmailQueue.countDocuments({
       status: "sent",
