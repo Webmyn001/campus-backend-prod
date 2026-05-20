@@ -12,7 +12,7 @@ jobs:
       - name: Ping Render backend /api/ping
         run: |
           set -e
-          URL="https://campus-backend-5z2s.onrender.com/api/ping"
+          URL="https://campus-backend-prod.onrender.com/api/ping"
           echo "Pinging $URL"
           status=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
           echo "HTTP status: $status"
