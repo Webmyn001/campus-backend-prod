@@ -6,6 +6,7 @@ const {
   getListings,
   getListingById,
   getMyListings,
+  updateMyListingPrice,
   verifyMarketplacePayment,
   getMyOrders,
   getSellerOrders,
@@ -30,6 +31,7 @@ router.get("/listings/:id", getListingById);
 // ---- Seller (auth) ----
 router.post("/listings", authMiddleware, createListing);
 router.get("/mine/listings", authMiddleware, getMyListings);
+router.put("/listings/:id/price", authMiddleware, updateMyListingPrice);
 
 // ---- Buyer (auth) ----
 router.post("/pay/verify", authMiddleware, verifyMarketplacePayment);

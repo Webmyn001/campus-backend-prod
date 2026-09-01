@@ -334,6 +334,59 @@ exports.getMyListings = async (req, res) => {
   }
 };
 
+// Seller: update the price of their own active final-year listing (e.g. after negotiation)
+exports.updateMyListingPrice = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
+      return res.status(400).json({ success: false, message: "Invalid listing" });
+    }
+
+    const newPrice = Number(req.body.sellingPrice);
+    if (!isFinite(newPrice) || newPrice <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid selling price.",
+      });
+    }
+
+    const listing = await Listing.findById(id);
+    if (!listing || listing.saleType !== "final_year") {
+      return res.status(404).json({ success: false, message: "Listing not found" });
+    }
+
+    if (String(sellerIdOf(listing)) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "You can only edit your own listings" });
+    }
+
+    if (listing.listingState !== "active") {
+      return res.status(409).json({
+        success: false,
+        code: "NOT_EDITABLE",
+        message:
+          listing.listingState === "pending" || listing.listingState === "rejected"
+            ? "This listing is still under review. You can edit once it's live."
+            : "This listing can no longer have its price changed.",
+      });
+    }
+
+    listing.priceAmount = newPrice;
+    listing.price = String(newPrice);
+    await listing.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Price updated — buyers will now see the new price at checkout.",
+      listing,
+    });
+  } catch (err) {
+    console.error("❌ updateMyListingPrice (final-year) error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ============================================================
 // Shared: build a marketplace order from a verified Paystack txn
 // (used by BOTH the verify endpoint and the webhook => single source of truth)
@@ -422,6 +475,28 @@ async function buildOrderFromVerifiedTx({ tx, buyer, listing, deliveryMethod, de
      <p>Please arrange delivery or pickup with the buyer. You'll be paid after the buyer confirms receipt.</p>
      <p>Best regards,<br/>CampusCrave Team</p>`
   );
+
+  // Notify the platform admin so they know a final-year order needs coordination:
+  // they may need to help the buyer get the item, or refund + credit the seller.
+  notify(
+    PLATFORM_SUPPORT_EMAIL,
+    "New final-year purchase needs your attention — order #" + order.orderNumber,
+    `<p>Hello Admin,</p>
+     <p>A new final-year marketplace order was just created and needs your attention.</p>
+     <p><strong>Order:</strong> #${order.orderNumber}</p>
+     <p><strong>Item:</strong> ${order.listingSnapshot.title}</p>
+     <p><strong>Buyer:</strong> ${order.buyerName || order.buyerEmail || "—"} (${order.buyerEmail || "no email"})</p>
+     <p><strong>Seller:</strong> ${order.sellerName || "—"} · ${(listing.sellerInfo && listing.sellerInfo.whatsapp) || "no WhatsApp"}</p>
+     <p><strong>Amount paid:</strong> ${order.totalPaid.toLocaleString()} NGN · ${order.deliveryMethod === "delivery" ? "Delivery" : "Campus Pickup"}</p>
+     <p>Please contact the buyer to coordinate how they receive the item. If the seller is not willing to sell,
+        refund the buyer and credit the seller using the seller's saved payout details.</p>
+     <p>Best regards,<br/>CampusCrave</p>`
+  );
+
+  // Mark the order as having notified the admin
+  await MarketplaceOrder.findByIdAndUpdate(order._id, {
+    $set: { adminNotified: true, adminNotifiedAt: new Date() },
+  });
 
   return order;
 }

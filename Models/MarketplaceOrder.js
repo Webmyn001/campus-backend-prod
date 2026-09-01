@@ -111,6 +111,11 @@ const marketplaceOrderSchema = new mongoose.Schema(
     buyerConfirmed: { type: Boolean, default: false },
     buyerConfirmedAt: { type: Date },
 
+    // True once the admin has been notified about this new purchase so they can
+    // help the buyer/seller coordinate handover (email + surfaced in admin UI).
+    adminNotified: { type: Boolean, default: false },
+    adminNotifiedAt: { type: Date },
+
     refundReference: { type: String, sparse: true },
 
     // ---- Simple dispute block ----
