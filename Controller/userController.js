@@ -7,6 +7,14 @@ const Subscription = require("../Models/Subscription");
 const Setting = require("../Models/Setting");
 const cloudinary = require("../config/cloudinary");
 
+require("dotenv").config();
+
+// TEMPORARY promotion: keep every personal store link active regardless of
+// subscription, so browsing/selling is friction-free for launch week.
+// Restore the old behaviour by setting ALLOW_ALL_STORES=false in .env and
+// removing the bypass below.
+const ALLOW_ALL_STORES = process.env.ALLOW_ALL_STORES !== "false";
+
 // Get all Users
 exports.getAllUsers = async (req, res) => {
     try {
@@ -320,8 +328,9 @@ exports.getUserStore = async (req, res) => {
         
         console.log(`[StoreAccess] Result: User: ${userId}, hasSub: ${!!activeSub}, isPromo: ${isPromoActive}, isOfficial: ${isOfficialStore}`);
 
-        // If neither is true, restrict access (unless it's the official store)
-        if (!activeSub && !isPromoActive && !isOfficialStore) {
+        // If neither is true, restrict access (unless it's the official store).
+        // TEMPORARY: while ALLOW_ALL_STORES is on, every store stays active.
+        if (!ALLOW_ALL_STORES && !activeSub && !isPromoActive && !isOfficialStore) {
             console.log(`[StoreAccess] DENIED for ${user.username} (${userId})`);
             return res.status(403).json({ 
                 message: "This store's personal link is currently inactive.", 

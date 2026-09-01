@@ -38,6 +38,15 @@ async function run() {
   const existingCampaign = await Campaign.findOne({ name: "OAU Final-Year Quick Sale" });
   if (existingCampaign) {
     console.log("⏭ Campaign already exists:", existingCampaign.name);
+    // Keep the marketing copy fresh (covers BOTH buyers and sellers) on re-runs.
+    await Campaign.findByIdAndUpdate(existingCampaign._id, {
+      $set: {
+        tagline: "Buy quality used furniture, electronics and more at fair prices — or clear out your room before you graduate.",
+        description:
+          "Shop quality second-hand items from graduating students, or sell your own furniture, electronics, bags and hostel items before you leave campus. Payments protected with Paystack.",
+      },
+    });
+    console.log("✅ Updated existing campaign copy (buy + sell)");
   } else {
     const start = new Date();
     start.setDate(start.getDate() - 60);
@@ -50,9 +59,10 @@ async function run() {
       institutionCode: "OAU",
       institutionName: oau.name,
       saleType: "final_year",
-      tagline: "Graduating? Turn Your Campus Belongings Into Cash.",
+      tagline:
+        "Buy quality used furniture, electronics and more at fair prices — or clear out your room before you graduate.",
       description:
-        "Sell furniture, appliances, electronics, bags, hostel items and more to students who are still on campus.",
+        "Shop quality second-hand items from graduating students, or sell your own furniture, electronics, bags and hostel items before you leave campus. Payments protected with Paystack.",
       startDate: start,
       endDate: end,
       status: "active",

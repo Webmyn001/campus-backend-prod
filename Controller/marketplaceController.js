@@ -115,6 +115,8 @@ exports.createListing = async (req, res) => {
     title,
     category,
     condition,
+    workingCondition,
+    conditionNote,
     description,
     sellingPrice,
     images,
@@ -139,6 +141,23 @@ exports.createListing = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Please enter a valid selling price" });
+    }
+
+    // Electrical categories must state whether the item actually works
+    const cat = category || "Other Goods";
+    if (["Electronics", "Appliances"].includes(cat)) {
+      if (!workingCondition) {
+        return res.status(400).json({
+          success: false,
+          message: "Please state the working condition — buyers need to know it powers on.",
+        });
+      }
+      if (workingCondition !== "Works perfectly" && !String(conditionNote || "").trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Please describe the fault or issue so buyers know exactly what to expect.",
+        });
+      }
     }
 
     // Resolve an active campaign (OAU today, others later - never hard-coded)
@@ -174,6 +193,8 @@ exports.createListing = async (req, res) => {
       price: String(priceAmount), // display compat with existing product cards
       priceAmount,
       condition: condition || "Used - Good",
+      workingCondition: workingCondition || "",
+      conditionNote: conditionNote || "",
       description,
       images: uploadedImages,
       contactMethod: "Phone Call",
@@ -371,6 +392,8 @@ async function buildOrderFromVerifiedTx({ tx, buyer, listing, deliveryMethod, de
       image: listing.images && listing.images[0] ? listing.images[0].url : "",
       category: listing.category,
       condition: listing.condition,
+      workingCondition: listing.workingCondition || "",
+      conditionNote: listing.conditionNote || "",
       priceAmount,
       sellerName: (listing.sellerInfo && listing.sellerInfo.name) || "",
       pickupLocation: listing.pickupLocation || "",

@@ -82,6 +82,9 @@ const listingSchema = new mongoose.Schema({
   // Numeric selling price for marketplace items (existing `price` stays a String
   // for backward compatibility; all server-side money math uses priceAmount).
   priceAmount: { type: Number, min: 0, index: true },
+  // Electrical category honesty (Electronics/Appliances require these)
+  workingCondition: { type: String, trim: true },
+  conditionNote: { type: String, trim: true },
   pickupLocation: { type: String, trim: true },
   deliveryAvailable: { type: Boolean, default: false },
   deliveryFee: { type: Number, default: 0, min: 0 },
