@@ -85,6 +85,16 @@ const userSchema = new mongoose.Schema({
     enum: ["user", "admin"],
     default: "user",
   },
+
+  // ===== Marketplace seller payout details (Paystack transfer recipient) =====
+  payoutRecipient: {
+    bankName: { type: String, trim: true },
+    accountNumber: { type: String, trim: true },
+    accountName: { type: String, trim: true },
+    recipientCode: { type: String, trim: true },
+    updatedAt: { type: Date },
+  },
+
   views: {
     type: Number,
     default: 0,

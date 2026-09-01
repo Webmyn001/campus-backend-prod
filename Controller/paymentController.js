@@ -5,6 +5,7 @@ const User = require("../Models/User");
 const Setting = require("../Models/Setting");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
+const { handleMarketplaceWebhook } = require("./marketplaceController");
 
 dotenv.config();
 
@@ -158,12 +159,38 @@ const paystackWebhook = async (req, res) => {
     }
 
     const event = req.body;
+    const eventType = event.event;
 
-    if (event.event !== "charge.success") {
-      console.log("ℹ️ Non-success event received. Ignored:", event.event);
+    // ==========================
+    // 🛒 MARKETPLACE events are handled in a completely separate module so they
+    // can never touch subscription business logic. This covers:
+    //   - charge.success  with metadata.type === "marketplace_purchase"
+    //   - transfer.success / transfer.failed  (seller payouts)
+    // ==========================
+    const isMarketplaceEvent =
+      (eventType === "charge.success" && event.data?.metadata?.type === "marketplace_purchase") ||
+      eventType === "transfer.success" ||
+      eventType === "transfer.failed";
+
+    if (isMarketplaceEvent) {
+      console.log(`🛒 Marketplace webhook event "${eventType}". Ref: ${event.data?.reference || event.data?.transfer_code || "n/a"}`);
+      try {
+        const result = await handleMarketplaceWebhook(event);
+        console.log("🛒 Marketplace webhook handled:", result);
+      } catch (err) {
+        console.error("🔥 Marketplace webhook handling error:", err);
+      }
       return res.sendStatus(200);
     }
 
+    if (eventType !== "charge.success") {
+      console.log("ℹ️ Non-success event received. Ignored:", eventType);
+      return res.sendStatus(200);
+    }
+
+    // ==========================
+    // ✅ SUBSCRIPTION events (existing behaviour - unchanged)
+    // ==========================
     const { reference, amount, currency, customer, metadata } = event.data;
     console.log(`🔔 Webhook received. Reference: ${reference}, Amount: ${amount}, Email: ${customer?.email}`);
 

@@ -65,6 +65,34 @@ const listingSchema = new mongoose.Schema({
     default: "pending",
     index: true,
   },
+
+  // ===== OAU Final-Year Quick Sale / marketplace campaign fields =====
+  // (all optional -> existing community listings are unaffected)
+  saleType: {
+    type: String,
+    enum: ["regular", "final_year"],
+    default: "regular",
+    index: true,
+  },
+  institution: { type: String, trim: true, index: true },
+  institutionCode: { type: String, uppercase: true, trim: true, index: true },
+  institutionId: { type: mongoose.Schema.Types.ObjectId, ref: "Institution" },
+  campaign: { type: String, trim: true },
+  campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign", index: true },
+  // Numeric selling price for marketplace items (existing `price` stays a String
+  // for backward compatibility; all server-side money math uses priceAmount).
+  priceAmount: { type: Number, min: 0, index: true },
+  pickupLocation: { type: String, trim: true },
+  deliveryAvailable: { type: Boolean, default: false },
+  deliveryFee: { type: Number, default: 0, min: 0 },
+  deliveryArrangement: { type: String, trim: true },
+  listingState: {
+    type: String,
+    enum: ["active", "reserved", "sold", "archived", "suspended"],
+    default: "active",
+    index: true,
+  },
+  approvalNote: { type: String, trim: true },
   postedAt: {
     type: Date,
     default: Date.now, // Automatically set the postedAt field

@@ -21,6 +21,9 @@ const cronRoutes = require("./Routes/cronRoutes");
 const jobRoutes = require("./Routes/jobRoutes");
 const healthRoutes = require("./Routes/healthRoutes");
 
+const marketplaceRoutes = require("./Routes/marketplaceRoutes");
+const marketplaceAdminRoutes = require("./Routes/marketplaceAdminRoutes");
+
 require("./jobs/cleanupExpiredListings");
 const { runWeeklyAnalyticsJob } = require("./jobs/weeklyAnalyticsEmail");
 const cors = require("cors")
@@ -69,6 +72,10 @@ app.use("/api/analytics", analyticsRoutes); // Add analytics routes
 app.use("/api/cron", cronRoutes); // Add cron routes for Vercel
 app.use("/api/jobs", jobRoutes); // Add Jobs & Opportunities routes
 app.use("/api", healthRoutes); // Add health/ping routes
+
+// OAU Final-Year Quick Sale marketplace
+app.use("/api/marketplace", marketplaceRoutes); // public + buyer/seller flows
+app.use("/api/admin", marketplaceAdminRoutes); // admin-only marketplace endpoints
 
 // ✅ Global Error Handler to catch 500s and log them
 app.use((err, req, res, next) => {
