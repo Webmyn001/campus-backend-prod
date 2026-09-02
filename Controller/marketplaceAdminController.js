@@ -251,6 +251,21 @@ exports.removeListing = async (req, res) => {
   }
 };
 
+// Report whether deleting this listing will permanently delete it (no order history)
+// or only archive it (has order history). Used by the admin UI to show the right
+// confirmation before making the change.
+exports.getListingAction = async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ success: false, message: "Listing not found" });
+    const hasOrders = await MarketplaceOrder.exists({ listingId: listing._id });
+    res.status(200).json({ success: true, hasOrders: !!hasOrders });
+  } catch (err) {
+    console.error("❌ getListingAction error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // ============================================================
 // Orders management
 // ============================================================

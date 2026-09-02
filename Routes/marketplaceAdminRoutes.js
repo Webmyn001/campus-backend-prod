@@ -9,6 +9,7 @@ const {
   activateListing,
   markSoldListing,
   removeListing,
+  getListingAction,
   getAllOrders,
   getOrderById,
   resolveDispute,
@@ -42,6 +43,7 @@ router.put("/marketplace/listings/:id/suspend", suspendListing);
 router.put("/marketplace/listings/:id/activate", activateListing);
 router.put("/marketplace/listings/:id/mark-sold", markSoldListing);
 router.delete("/marketplace/listings/:id", removeListing);
+router.get("/marketplace/listings/:id/action", getListingAction);
 
 // ---- Orders + disputes ----
 router.get("/marketplace/orders", getAllOrders);
