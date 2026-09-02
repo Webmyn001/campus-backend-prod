@@ -771,10 +771,10 @@ exports.confirmReceipt = async (req, res) => {
     if (String(order.buyerId) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
-    if (!["delivered", "ready_for_pickup", "out_for_delivery"].includes(order.orderStatus)) {
+    if (!["processing", "ready_for_pickup", "out_for_delivery", "delivered"].includes(order.orderStatus)) {
       return res.status(400).json({
         success: false,
-        message: `Items can only be confirmed once ${order.orderStatus === "buyer_confirmed" ? "confirmed already" : "they are delivered or ready for pickup"}`,
+        message: `Items can only be confirmed once ${order.orderStatus === "buyer_confirmed" ? "confirmed already" : "the payment is verified"}`,
       });
     }
     if (order.orderStatus === "disputed") {
