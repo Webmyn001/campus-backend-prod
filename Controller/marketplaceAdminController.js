@@ -11,6 +11,8 @@ const sendEmail = require("../utils/sendEmail");
 const paystack = require("../utils/paystack");
 const mkt = require("../utils/marketplace");
 
+const Setting = require("../Models/Setting");
+
 require("dotenv").config();
 
 const PLATFORM_SUPPORT_EMAIL = process.env.PLATFORM_SUPPORT_EMAIL || "campuscrave0001@gmail.com";
@@ -553,15 +555,26 @@ exports.completeOrder = async (req, res) => {
 // ============================================================
 // Financials (subscription and marketplace kept separate)
 // ============================================================
-exports.getFinancials = async (_req, res) => {
+exports.getFinancials = async (req, res) => {
   try {
+    // Optional cutoff: financials only count orders/payouts created on/after `since`.
+    // Lets the admin "start from zero" without destroying any records.
+    const stored = await Setting.findOne({ key: "mkt_financials_since" });
+    let sinceMs = Number(req.query.since);
+    if (!(Number.isFinite(sinceMs) && sinceMs > 0) && stored && stored.value) {
+      sinceMs = Number(new Date(stored.value).getTime());
+    }
+    const useSince = Number.isFinite(sinceMs) && sinceMs > 0;
+    const orderMatch = useSince ? { createdAt: { $gte: new Date(sinceMs) } } : {};
+    const payoutMatch = useSince ? { createdAt: { $gte: new Date(sinceMs) } } : {};
+
     const [subAgg, grossAgg, payoutAgg, pendingAgg, refundAgg] = await Promise.all([
       Subscription.aggregate([
         { $match: { paymentStatus: "successful" } },
         { $group: { _id: null, total: { $sum: "$amountPaid" } } },
       ]),
       MarketplaceOrder.aggregate([
-        { $match: { paymentStatus: { $in: ["verified", "paid"] } } },
+        { $match: { ...orderMatch, paymentStatus: { $in: ["verified", "paid"] } } },
         {
           $group: {
             _id: null,
@@ -573,15 +586,15 @@ exports.getFinancials = async (_req, res) => {
         },
       ]),
       MarketplacePayout.aggregate([
-        { $match: { status: "paid" } },
+        { $match: { ...payoutMatch, status: "paid" } },
         { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
       ]),
       MarketplacePayout.aggregate([
-        { $match: { status: { $in: ["pending", "initiated", "processed", "paused"] } } },
+        { $match: { ...payoutMatch, status: { $in: ["pending", "initiated", "processed", "paused"] } } },
         { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
       ]),
       MarketplaceOrder.aggregate([
-        { $match: { paymentStatus: "refunded" } },
+        { $match: { ...orderMatch, paymentStatus: "refunded" } },
         { $group: { _id: null, total: { $sum: "$totalPaid" }, count: { $sum: 1 } } },
       ]),
     ]);
@@ -604,6 +617,34 @@ exports.getFinancials = async (_req, res) => {
     });
   } catch (err) {
     console.error("❌ getFinancials error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Set the financial cutoff to "now" so marketplace totals start from zero.
+// Existing orders are NOT deleted — they're just excluded from the figures.
+exports.setFinancialsReset = async (_req, res) => {
+  try {
+    const now = new Date();
+    await Setting.updateOne(
+      { key: "mkt_financials_since" },
+      { $set: { value: now.toISOString(), updatedAt: now } },
+      { upsert: true }
+    );
+    res.status(200).json({ success: true, since: now.toISOString(), message: "Marketplace financials reset — new totals start from now." });
+  } catch (err) {
+    console.error("❌ setFinancialsReset error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Clear the cutoff so financials count ALL orders again.
+exports.clearFinancialsReset = async (_req, res) => {
+  try {
+    await Setting.deleteOne({ key: "mkt_financials_since" });
+    res.status(200).json({ success: true, message: "Marketplace financials cutoff cleared — totals now include all time." });
+  } catch (err) {
+    console.error("❌ clearFinancialsReset error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

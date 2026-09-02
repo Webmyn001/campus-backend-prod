@@ -18,6 +18,8 @@ const {
   markPayoutPaid,
   completeOrder,
   getFinancials,
+  setFinancialsReset,
+  clearFinancialsReset,
   getAllCampaigns,
   createCampaign,
   updateCampaign,
@@ -58,6 +60,8 @@ router.post("/marketplace/payouts/:id/mark-paid", markPayoutPaid);
 
 // ---- Financials ----
 router.get("/marketplace/financials", getFinancials);
+router.post("/marketplace/financials/reset", setFinancialsReset);
+router.post("/marketplace/financials/reset/clear", clearFinancialsReset);
 
 // ---- Campaigns ----
 router.get("/marketplace/campaigns", getAllCampaigns);
