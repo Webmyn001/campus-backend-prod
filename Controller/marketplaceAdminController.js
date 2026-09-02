@@ -378,15 +378,50 @@ exports.getAllPayouts = async (req, res) => {
       MarketplacePayout.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
       MarketplacePayout.countDocuments(query),
     ]);
-    res.status(200).json({ success: true, payouts, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+
+    // Enrich each payout with seller bank details + order numbers so the admin can
+    // pay the seller manually (Option A — no automatic Paystack transfer).
+    const enriched = [];
+    for (const p of payouts) {
+      const item = p.toObject ? p.toObject() : p;
+      const seller = await User.findById(p.sellerId).select("name email payoutRecipient").catch(() => null);
+      const order = await MarketplaceOrder.findById(p.orderId).select("orderNumber sellerAmount platformFee totalPaid deliveryFee priceAmount").catch(() => null);
+      if (seller) {
+        item.sellerName = seller.name || "";
+        item.sellerEmail = seller.email || "";
+      }
+      if (seller && seller.payoutRecipient) {
+        const r = seller.payoutRecipient;
+        item.sellerPayout = {
+          bankName: r.bankName || "",
+          accountName: r.accountName || "",
+          accountNumber: maskAccountNumber(r.accountNumber),
+          recipientCode: r.recipientCode || "",
+          hasRecipient: !!(r.recipientCode && r.accountName),
+        };
+      } else {
+        item.sellerPayout = { hasRecipient: false };
+      }
+      item.orderNumber = (order && order.orderNumber) || "";
+      item.sellerAmount = (order && order.sellerAmount) ?? p.amount;
+      item.platformFee = (order && order.platformFee) ?? p.platformFee ?? 0;
+      item.totalPaid = (order && order.totalPaid) ?? 0;
+      item.deliveryFee = (order && order.deliveryFee) ?? 0;
+      item.priceAmount = (order && order.priceAmount) ?? 0;
+      enriched.push(item);
+    }
+
+    res.status(200).json({ success: true, payouts: enriched, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (err) {
     console.error("❌ admin getAllPayouts error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Process a pending payout through Paystack. Idempotent - the payoutReference is
-// passed as the transfer reference, and we only move from a safe status.
+// Process a (pending) payout. Option A: we do NOT auto-transfer via Paystack.
+// The admin receives the escrow money in their Paystack/bank account, then pays
+// the seller manually using the seller's saved bank details. This endpoint merely
+// marks the payout as ready-to-release and returns the exact amounts + bank details.
 exports.processPayout = async (req, res) => {
   try {
     const payout = await MarketplacePayout.findById(req.params.id);
@@ -412,33 +447,40 @@ exports.processPayout = async (req, res) => {
       return res.status(400).json({ success: false, message: "Seller has not added payout bank details" });
     }
 
-    const amountKobo = mkt.toKobo(payout.amount);
-    if (amountKobo <= 0) {
+    const amount = order.sellerAmount ?? payout.amount;
+    if (!(amount > 0)) {
       return res.status(400).json({ success: false, message: "Payout amount is zero" });
     }
 
-    const transfer = await paystack.initiateTransfer({
-      amount: amountKobo,
-      recipient: seller.payoutRecipient.recipientCode,
-      reference: payout.payoutReference,
-      reason: `Marketplace payout for ${order.orderNumber}`,
-    });
-
-    await MarketplacePayout.findByIdAndUpdate(payout._id, {
-      $set: {
-        status: "initiated",
-        transferCode: transfer.transfer_code,
-        transferReference: transfer.reference || payout.payoutReference,
-        initiatedAt: new Date(),
-        processedBy: req.user._id,
-        failureReason: "",
+    // No Paystack call — the admin pays the seller manually. Just mark it released/awaiting payment confirmation.
+    const updatedPayout = await MarketplacePayout.findByIdAndUpdate(
+      payout._id,
+      {
+        $set: {
+          status: "processed",
+          initiatedAt: new Date(),
+          processedBy: req.user._id,
+          failureReason: "",
+        },
       },
-    });
+      { new: true }
+    );
     await MarketplaceOrder.findByIdAndUpdate(order._id, {
       $set: { payoutStatus: "processed", orderStatus: "payout_pending" },
     });
 
-    res.status(200).json({ success: true, message: "Payout initiated", transfer });
+    const r = seller.payoutRecipient;
+    res.status(200).json({
+      success: true,
+      message: "Payout released. Pay the seller manually using these details.",
+      payout: updatedPayout,
+      instructions: {
+        orderNumber: order.orderNumber,
+        paySeller: amount,
+        platformFee: order.platformFee ?? payout.platformFee ?? 0,
+        sellerBank: { bankName: r.bankName || "", accountNumber: r.accountNumber || "", accountName: r.accountName || "" },
+      },
+    });
   } catch (err) {
     console.error("❌ processPayout error:", err.message);
     res.status(400).json({ success: false, message: err.message || "Server error" });

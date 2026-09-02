@@ -55,15 +55,31 @@ async function resolveAccount(bank_code, account_number) {
 
 // Initiate a single transfer. The `reference` doubles as our idempotency key.
 async function initiateTransfer({ amount, recipient, reference, reason = "Marketplace seller payout" }) {
-  const { data } = await axios.post(
-    `${PAYSTACK_BASE}/transfer`,
-    { source: "balance", amount, recipient, reference, reason },
-    { headers: headers() }
-  );
-  if (!data?.status) {
-    throw new Error(data?.message || "Failed to initiate transfer");
+  try {
+    const { data } = await axios.post(
+      `${PAYSTACK_BASE}/transfer`,
+      { source: "balance", amount, recipient, reference, reason },
+      { headers: headers() }
+    );
+    if (!data?.status) {
+      throw new Error(data?.message || "Failed to initiate transfer");
+    }
+    return data.data; // { reference, transfer_code, status, amount, ... }
+  } catch (err) {
+    // Surface Paystack's own error body (e.g. insufficient balance, invalid recipient)
+    // instead of a generic axios 400.
+    const body = err?.response?.data;
+    if (body) {
+      const msg = body.message || body.error || body.data?.message || "Paystack transfer failed";
+      const code = body.code || err?.response?.status || "";
+      const e = new Error(`${msg}${code ? ` (${code})` : ""}`);
+      e.paystack = body;
+      e.status = err?.response?.status;
+      e.generic = false;
+      throw e;
+    }
+    throw err;
   }
-  return data.data; // { reference, transfer_code, status, amount, ... }
 }
 
 // Fetch a single transfer by its Paystack code
