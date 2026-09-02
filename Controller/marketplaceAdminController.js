@@ -33,6 +33,34 @@ function sellerIdOf(listing) {
   return info.id || info._id || listing.sellerId || info;
 }
 
+// Attach the seller's saved payout/bank details to an order for the admin to pay them.
+function maskAccountNumber(num) {
+  const s = String(num || "");
+  if (s.length <= 4) return s;
+  return "•••• " + s.slice(-4);
+}
+
+async function attachSellerPayout(order) {
+  if (!order || !order.sellerId || order.sellerPayout) return order;
+  try {
+    const seller = await User.findById(order.sellerId).select("email name payoutRecipient").catch(() => null);
+    if (seller && seller.payoutRecipient) {
+      const p = seller.payoutRecipient;
+      order = order.toObject ? order.toObject() : order;
+      order.sellerEmail = seller.email || "";
+      order.sellerPayout = {
+        bankName: p.bankName || "",
+        accountNumber: maskAccountNumber(p.accountNumber),
+        accountName: p.accountName || "",
+        hasRecipient: !!(p.recipientCode && p.accountName),
+      };
+    }
+  } catch (err) {
+    console.error("❌ attachSellerPayout error:", err.message);
+  }
+  return order;
+}
+
 // ============================================================
 // Listings management
 // ============================================================
@@ -242,7 +270,9 @@ exports.getAllOrders = async (req, res) => {
       MarketplaceOrder.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
       MarketplaceOrder.countDocuments(query),
     ]);
-    res.status(200).json({ success: true, orders, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+    const enriched = [];
+    for (const o of orders) enriched.push(await attachSellerPayout(o));
+    res.status(200).json({ success: true, orders: enriched, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (err) {
     console.error("❌ admin getAllOrders error:", err);
     res.status(500).json({ success: false, message: "Server error" });
@@ -254,7 +284,8 @@ exports.getOrderById = async (req, res) => {
     const order = await MarketplaceOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
     const payout = await MarketplacePayout.findOne({ orderId: order._id }).catch(() => null);
-    res.status(200).json({ success: true, order, payout });
+    const enriched = await attachSellerPayout(order);
+    res.status(200).json({ success: true, order: enriched, payout });
   } catch (err) {
     console.error("❌ admin getOrderById error:", err);
     res.status(500).json({ success: false, message: "Server error" });
