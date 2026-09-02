@@ -34,12 +34,7 @@ function sellerIdOf(listing) {
 }
 
 // Attach the seller's saved payout/bank details to an order for the admin to pay them.
-function maskAccountNumber(num) {
-  const s = String(num || "");
-  if (s.length <= 4) return s;
-  return "•••• " + s.slice(-4);
-}
-
+// The full account number is exposed because the admin must transfer funds to the seller.
 async function attachSellerPayout(order) {
   if (!order || !order.sellerId || order.sellerPayout) return order;
   try {
@@ -50,7 +45,7 @@ async function attachSellerPayout(order) {
       order.sellerEmail = seller.email || "";
       order.sellerPayout = {
         bankName: p.bankName || "",
-        accountNumber: maskAccountNumber(p.accountNumber),
+        accountNumber: p.accountNumber || "",
         accountName: p.accountName || "",
         hasRecipient: !!(p.recipientCode && p.accountName),
       };
@@ -395,7 +390,7 @@ exports.getAllPayouts = async (req, res) => {
         item.sellerPayout = {
           bankName: r.bankName || "",
           accountName: r.accountName || "",
-          accountNumber: maskAccountNumber(r.accountNumber),
+          accountNumber: r.accountNumber || "",
           recipientCode: r.recipientCode || "",
           hasRecipient: !!(r.recipientCode && r.accountName),
         };
