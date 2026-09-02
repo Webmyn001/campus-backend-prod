@@ -233,18 +233,27 @@ exports.removeListing = async (req, res) => {
     const listing = await Listing.findById(req.params.id);
     if (!listing) return res.status(404).json({ success: false, message: "Listing not found" });
 
-    const hasOrders = await MarketplaceOrder.exists({ listingId: listing._id });
-    if (hasOrders) {
-      // Never destroy records that have transactions. Archive instead.
-      const archived = await Listing.findByIdAndUpdate(req.params.id, { $set: { listingState: "archived", status: "rejected" } }, { new: true });
-      return res.status(200).json({ success: true, message: "Listing has order history so it was archived instead of deleted", listing: archived });
+    // Admin chooses how to handle the listing:
+    //   mode = "delete"  -> permanently remove the listing (any related orders stay
+    //                       in the DB for audit/escrow; the item is simply gone from
+    //                       the marketplace so it can never be paid for again).
+    //   mode = "archive" -> hide it from the marketplace but keep the record.
+    const mode = req.body?.action === "delete" || req.query?.mode === "delete" ? "delete" : "archive";
+
+    if (mode === "delete") {
+      // Hard delete. Sold/purchased items were already marked sold and are blocked
+      // from repurchase anyway, so deleting permanently is safe for preventing re-payment.
+      if (listing.images && listing.images.length) {
+        await Promise.all(listing.images.map((img) => cloudinary.uploader.destroy(img.public_id).catch(() => null)));
+      }
+      await MarketplaceOrder.updateMany({ listingId: listing._id }, { $set: { listingSnapshot: listing.listingSnapshot || {} } }).catch(() => null);
+      await Listing.findByIdAndDelete(req.params.id);
+      return res.status(200).json({ success: true, message: "Listing deleted", deleted: true });
     }
 
-    if (listing.images && listing.images.length) {
-      await Promise.all(listing.images.map((img) => cloudinary.uploader.destroy(img.public_id).catch(() => null)));
-    }
-    await Listing.findByIdAndDelete(req.params.id);
-    res.status(200).json({ success: true, message: "Listing removed" });
+    // archive mode: hide from the marketplace, keep ordering/escrow records intact.
+    const archived = await Listing.findByIdAndUpdate(req.params.id, { $set: { listingState: "archived", status: "rejected" } }, { new: true });
+    res.status(200).json({ success: true, message: "Listing archived & hidden from the marketplace", archived: true, listing: archived });
   } catch (err) {
     console.error("❌ removeListing error:", err);
     res.status(500).json({ success: false, message: "Server error" });
