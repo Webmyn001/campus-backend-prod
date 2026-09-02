@@ -733,6 +733,17 @@ exports.getAllInstitutions = async (_req, res) => {
   }
 };
 
+exports.deleteInstitution = async (req, res) => {
+  try {
+    const institution = await Institution.findByIdAndDelete(req.params.id);
+    if (!institution) return res.status(404).json({ success: false, message: "Institution not found" });
+    res.status(200).json({ success: true, message: "Institution deleted" });
+  } catch (err) {
+    console.error("❌ deleteInstitution error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 exports.createInstitution = async (req, res) => {
   try {
     const { name, code, location } = req.body;

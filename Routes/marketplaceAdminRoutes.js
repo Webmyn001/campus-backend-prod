@@ -26,6 +26,7 @@ const {
   deleteCampaign,
   getAllInstitutions,
   createInstitution,
+  deleteInstitution,
 } = require("../Controller/marketplaceAdminController");
 const authMiddleware = require("../Middleware/auth");
 const adminMiddleware = require("../Middleware/admin");
@@ -72,5 +73,6 @@ router.delete("/marketplace/campaigns/:id", deleteCampaign);
 // ---- Institutions ----
 router.get("/marketplace/institutions", getAllInstitutions);
 router.post("/marketplace/institutions", createInstitution);
+router.delete("/marketplace/institutions/:id", deleteInstitution);
 
 module.exports = router;
