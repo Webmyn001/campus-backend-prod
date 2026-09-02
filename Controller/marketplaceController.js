@@ -136,6 +136,19 @@ exports.createListing = async (req, res) => {
         .json({ success: false, message: "Title, description and selling price are required" });
     }
 
+    // Sellers must have bank/payout details on file before they can list on the Final-Year sale.
+    if (
+      !user ||
+      !user.payoutRecipient ||
+      !user.payoutRecipient.recipientCode ||
+      !user.payoutRecipient.accountName
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Add your bank/payout details to your seller dashboard before you can list an item.",
+      });
+    }
+
     const priceAmount = Number(sellingPrice);
     if (!isFinite(priceAmount) || priceAmount <= 0) {
       return res
@@ -958,6 +971,29 @@ exports.getMyPayouts = async (req, res) => {
     res.status(200).json({ success: true, payouts });
   } catch (err) {
     console.error("❌ getMyPayouts error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Whether the current user has payout/bank details on file (seller can list).
+exports.getMyPayoutInfo = async (req, res) => {
+  try {
+    const user = req.user;
+    const p = user && user.payoutRecipient;
+    const hasDetails = !!(p && p.recipientCode && p.accountName);
+    res.status(200).json({
+      success: true,
+      hasDetails,
+      recipient: p
+        ? {
+            bankName: p.bankName || "",
+            accountNumber: p.accountNumber ? "••••" + String(p.accountNumber).slice(-4) : "",
+            accountName: p.accountName || "",
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error("❌ getMyPayoutInfo error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

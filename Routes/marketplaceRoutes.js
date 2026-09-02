@@ -17,6 +17,7 @@ const {
   savePayoutDetails,
   getBanksList,
   getMyPayouts,
+  getMyPayoutInfo,
 } = require("../Controller/marketplaceController");
 const authMiddleware = require("../Middleware/auth");
 
@@ -46,6 +47,7 @@ router.post("/orders/:id/dispute", authMiddleware, reportProblem);
 
 // ---- Seller payout ----
 router.post("/payout/details", authMiddleware, savePayoutDetails);
+router.get("/payout/info", authMiddleware, getMyPayoutInfo);
 router.get("/payout/banks", authMiddleware, getBanksList);
 router.get("/payouts/mine", authMiddleware, getMyPayouts);
 
