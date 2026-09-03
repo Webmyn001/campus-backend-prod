@@ -2,7 +2,7 @@
 // here so that the backend never trusts the frontend for prices/fees/payouts.
 const crypto = require("crypto");
 
-const PLATFORM_COMMISSION_RATE = 0.01; // 1% of selling price
+const PLATFORM_COMMISSION_RATE = 0.03; // 3% of selling price
 
 function roundToKobo(n) {
   return Math.round(n * 100) / 100;
