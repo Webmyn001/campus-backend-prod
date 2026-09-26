@@ -48,6 +48,39 @@ const productSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
+    // Campus Crave Oktober Fest — applies ONLY to official store products
+    // (admin-gadget / admin-food). The normal `price` is never overwritten;
+    // the sale keeps its own original + discounted price and its own stock.
+    oktoberFest: {
+        enabled: {
+            type: Boolean,
+            default: false,
+        },
+        originalPrice: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        salePrice: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Total stock allocated to the Oktober Fest campaign.
+        stock: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // Units already sold during the campaign. Remaining = stock - soldCount.
+        soldCount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        startDate: { type: Date },
+        endDate: { type: Date },
+    },
     school_name: { type: String, index: true },
     location_city: { type: String, index: true },
     isUserVerified: { type: Boolean, default: false },

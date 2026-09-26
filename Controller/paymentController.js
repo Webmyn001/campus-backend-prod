@@ -6,6 +6,7 @@ const Setting = require("../Models/Setting");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
 const { handleMarketplaceWebhook } = require("./marketplaceController");
+const { handleStoreSaleWebhook } = require("./oktoberFestController");
 
 dotenv.config();
 
@@ -179,6 +180,20 @@ const paystackWebhook = async (req, res) => {
         console.log("🛒 Marketplace webhook handled:", result);
       } catch (err) {
         console.error("🔥 Marketplace webhook handling error:", err);
+      }
+      return res.sendStatus(200);
+    }
+
+    // ==========================
+    // 🎃 OCTOBER SALE (official store) events are handled in their own module
+    // ==========================
+    if (eventType === "charge.success" && event.data?.metadata?.type === "oktober_fest_purchase") {
+      console.log(`🎃 Oktober Fest webhook event. Ref: ${event.data?.reference || "n/a"}`);
+      try {
+        const result = await handleStoreSaleWebhook(event);
+        console.log("🎃 Oktober Fest webhook handled:", result);
+      } catch (err) {
+        console.error("🔥 Oktober Fest webhook handling error:", err);
       }
       return res.sendStatus(200);
     }
