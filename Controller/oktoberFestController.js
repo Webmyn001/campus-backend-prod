@@ -138,7 +138,7 @@ function computeStoreTotal(product, config, quantity) {
   return { unitPrice: unit, quantity: qty, total: mkt.roundToKobo(unit * qty) };
 }
 
-async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, deliveryMethod, deliveryNote = "" }) {
+async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, deliveryMethod, deliveryNote = "", deliveryZone = "ile_ife", deliveryLocation = "", deliveryPhone = "" }) {
   const config = await getCampaignSetting();
   const os = product.oktoberFest || {};
   const original = Number(os.originalPrice) || Number(product.price) || 0;
@@ -182,7 +182,8 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
     buyerId: buyer._id,
     buyerName: buyer.name || "",
     buyerEmail: buyer.email || "",
-    buyerPhone: buyer.phone || "",
+    buyerPhone: (deliveryZone === "outside" ? deliveryPhone : "") || buyer.phone || "",
+    buyerAddress: deliveryLocation || "",
     productId: product._id,
     productSnapshot: {
       name: product.name,
@@ -211,6 +212,7 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
      <p><strong>Order:</strong> #${order.orderNumber}</p>
      <p><strong>Item:</strong> ${order.productSnapshot.name} × ${order.quantity}</p>
      <p><strong>Buyer:</strong> ${order.buyerName || order.buyerEmail || "—"} (${order.buyerEmail || "no email"})</p>
+     ${order.deliveryMethod === "delivery" ? `<p><strong>Deliver to:</strong> ${order.buyerAddress || "—"} · ${order.buyerPhone || "no phone"}</p>` : ""}
      <p><strong>Amount paid:</strong> ${order.totalPaid.toLocaleString()} NGN · ${order.deliveryMethod === "delivery" ? "Delivery" : "Campus Pickup"}</p>
      <p>Please arrange fulfilment with the buyer.</p>
      <p>Best regards,<br/>CampusCrave</p>`
@@ -224,7 +226,7 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
 // Buyer: verify Paystack payment server-side and create the order
 // ============================================================
 exports.verifyStorePayment = async (req, res) => {
-  const { reference, productId, quantity, deliveryMethod, deliveryNote } = req.body;
+  const { reference, productId, quantity, deliveryMethod, deliveryNote, deliveryZone, deliveryLocation, deliveryPhone } = req.body;
   try {
     if (!reference || !productId) {
       return res.status(400).json({ success: false, message: "Reference and product are required" });
@@ -234,6 +236,9 @@ exports.verifyStorePayment = async (req, res) => {
     }
     const qty = Math.max(1, Math.min(50, Number(quantity) || 1));
     const note = typeof deliveryNote === "string" ? deliveryNote.slice(0, 300) : "";
+    const zone = deliveryZone === "outside" ? "outside" : "ile_ife";
+    const location = typeof deliveryLocation === "string" ? deliveryLocation.trim().slice(0, 200) : "";
+    const phone = typeof deliveryPhone === "string" ? deliveryPhone.trim().slice(0, 30) : "";
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
@@ -270,6 +275,9 @@ exports.verifyStorePayment = async (req, res) => {
       quantity: qty,
       deliveryMethod: deliveryMethod === "delivery" ? "delivery" : "pickup",
       deliveryNote: note,
+      deliveryZone: zone,
+      deliveryLocation: location,
+      deliveryPhone: phone,
     });
 
     res.status(201).json({ success: true, message: "Payment verified. Order created.", order });
@@ -321,6 +329,9 @@ exports.handleStoreSaleWebhook = async (event) => {
           quantity: metadata.quantity || 1,
           deliveryMethod: metadata.deliveryMethod === "delivery" ? "delivery" : "pickup",
           deliveryNote: metadata.note || "",
+          deliveryZone: metadata.deliveryZone === "outside" ? "outside" : "ile_ife",
+          deliveryLocation: (metadata.deliveryLocation || "").toString().slice(0, 200),
+          deliveryPhone: (metadata.deliveryPhone || "").toString().slice(0, 30),
         });
         return { handled: true, action: "store_order_created_from_webhook" };
       }
