@@ -585,16 +585,19 @@ exports.adminCreateSaleProduct = async (req, res) => {
 
     let gallery = [];
     if (Array.isArray(images) && images.length) {
-      const results = await Promise.all(
-        images
-          .filter((img) => typeof img === "string")
-          .map((img) => {
+      const uploadable = images
+        .filter((img) => typeof img === "string" && img.trim())
+        .slice(0, 2);
+      if (uploadable.length) {
+        const results = await Promise.all(
+          uploadable.map((img) => {
             let imgData = img;
             if (!imgData.startsWith("data:image")) imgData = `data:image/png;base64,${imgData}`;
             return require("../config/cloudinary").uploader.upload(imgData, { folder: "oktober_fest" });
           })
-      );
-      gallery = results.map((r) => ({ url: r.secure_url, public_id: r.public_id }));
+        );
+        gallery = results.map((r) => ({ url: r.secure_url, public_id: r.public_id }));
+      }
     }
 
     const admin = await require("../Models/User").findById(req.user.id);
@@ -603,9 +606,9 @@ exports.adminCreateSaleProduct = async (req, res) => {
       name,
       price: checked.original,
       description,
-      fullDescription,
+      fullDescription: fullDescription || description || name,
       mainImage,
-      images: gallery,
+      images: gallery.length ? [mainImage, ...gallery] : [],
       category: category || "Electronics",
       availability: "In Stock",
       type,
