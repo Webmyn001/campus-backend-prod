@@ -193,6 +193,9 @@ exports.deleteProduct = async (req, res) => {
         }
 
         await Product.findByIdAndDelete(req.params.id);
+        // Remove analytics so the deleted product can never appear in trending
+        const Analytics = require("../Models/Analytics");
+        await Analytics.deleteMany({ productId: req.params.id }).catch(() => {});
         res.status(200).json({ success: true, message: "Product deleted" });
     } catch (error) {
         res.status(500).json({ success: false, message: "Error deleting product" });

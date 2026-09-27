@@ -204,6 +204,10 @@ exports.deleteListing = async (req, res) => {
     // Delete the listing from MongoDB
     await Listing.findByIdAndDelete(id);
 
+    // Remove analytics so the deleted listing can never appear in trending
+    const Analytics = require("../Models/Analytics");
+    await Analytics.deleteMany({ productId: id }).catch(() => {});
+
     res.status(200).json({ message: "Listing deleted successfully" });
   } catch (error) {
     console.error("DeleteListing Error:", error);

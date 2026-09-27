@@ -358,11 +358,19 @@ const getTrendingItems = async (req, res) => {
     for (const item of limitedTrending) {
       let data = null;
       if (item.type === "viplisting") {
-        data = await VipListing.findOne({ _id: item._id, status: { $ne: "pending" } });
+        data = await VipListing.findOne({
+          _id: item._id,
+          status: { $ne: "pending" },
+          soldOut: { $ne: true },
+        });
       } else if (item.type === "admin-product") {
-        data = await Product.findById(item._id);
+        data = await Product.findOne({ _id: item._id, soldOut: { $ne: true } });
       } else {
-        data = await Listing.findOne({ _id: item._id, status: { $ne: "pending" } });
+        data = await Listing.findOne({
+          _id: item._id,
+          status: { $ne: "pending" },
+          soldOut: { $ne: true },
+        });
       }
 
       if (data) {
@@ -371,6 +379,10 @@ const getTrendingItems = async (req, res) => {
           weeklyViews: item.weeklyViews,
           type: item.type === "viplisting" ? "service" : (item.type === "admin-product" ? "product" : "community")
         });
+      } else {
+        // Item no longer exists / is sold out — drop its analytics so it
+        // never re-enters the trending pool for later windows.
+        await Analytics.deleteMany({ productId: item._id }).catch(() => {});
       }
     }
 

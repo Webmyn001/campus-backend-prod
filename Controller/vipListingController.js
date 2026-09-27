@@ -210,6 +210,10 @@ exports.deleteVIPListing = async (req, res) => {
       return res.status(404).json({ message: "VIP Listing not found" });
     }
 
+    // Remove analytics so the deleted service can never appear in trending
+    const Analytics = require("../Models/Analytics");
+    await Analytics.deleteMany({ productId: id }).catch(() => {});
+
     // Delete associated images from Cloudinary if any
     if (listing.images && listing.images.length > 0) {
       await Promise.all(

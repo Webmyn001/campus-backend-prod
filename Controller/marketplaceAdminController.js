@@ -250,6 +250,9 @@ exports.removeListing = async (req, res) => {
       }
       await MarketplaceOrder.updateMany({ listingId: listing._id }, { $set: { listingSnapshot: listing.listingSnapshot || {} } }).catch(() => null);
       await Listing.findByIdAndDelete(req.params.id);
+      // Remove analytics so the deleted listing can never appear in trending
+      const Analytics = require("../Models/Analytics");
+      await Analytics.deleteMany({ productId: req.params.id }).catch(() => null);
       return res.status(200).json({ success: true, message: "Listing deleted", deleted: true });
     }
 
