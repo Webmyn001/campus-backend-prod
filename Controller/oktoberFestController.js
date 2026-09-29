@@ -428,6 +428,7 @@ exports.adminGetConfig = async (req, res) => {
       return {
         _id: p._id,
         name: p.name,
+        description: p.description || "",
         category: p.category,
         type: p.type,
         image: (p.mainImage && p.mainImage.url) || (p.images && p.images[0] && p.images[0].url) || "",
@@ -504,7 +505,7 @@ function validateSalePrices(originalPrice, salePrice) {
 
 exports.adminSetProductSale = async (req, res) => {
   const { id } = req.params;
-  const { enabled, originalPrice, salePrice, stock, startDate, endDate } = req.body;
+  const { enabled, originalPrice, salePrice, stock, startDate, endDate, name, description, category } = req.body;
   try {
     if (!mongoose.Types.ObjectId.isValid(String(id))) {
       return res.status(400).json({ success: false, message: "Invalid product" });
@@ -513,6 +514,12 @@ exports.adminSetProductSale = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
     if (product.type !== "admin-gadget" && product.type !== "admin-food") {
       return res.status(400).json({ success: false, message: "Only official Campus Crave Store products can join the Oktober Fest" });
+    }
+
+    // Editable copy fields. Validated so a bad edit fails loudly instead of
+    // silently saving and telling the admin the deal was updated.
+    if (name !== undefined && !String(name).trim()) {
+      return res.status(400).json({ success: false, message: "Product name cannot be empty" });
     }
 
     const os = product.oktoberFest || {};
@@ -539,6 +546,13 @@ exports.adminSetProductSale = async (req, res) => {
     if (!willEnable) {
       // Leaving the sale keeps prices/stock for re-entry but stops selling NOW.
       patch["oktoberFest.enabled"] = false;
+    }
+
+    // Persist the editable copy fields alongside the sale settings.
+    if (name !== undefined) patch.name = String(name).trim().slice(0, 120);
+    if (category !== undefined && String(category).trim()) patch.category = String(category).trim().slice(0, 60);
+    if (description !== undefined && String(description).trim()) {
+      patch.description = String(description).trim().slice(0, 300);
     }
 
     const updated = await Product.findByIdAndUpdate(id, { $set: patch }, { new: true });
