@@ -505,8 +505,23 @@ const NOTIFY_MESSAGES = {
     `Good news! We have started processing your order *${item}* (#${ref}). 📦\nYour item is being packed now.\n\nYou can follow every step from your CampusCrave dashboard → Track my order.`,
   ready: (item, ref) =>
     `Your order *${item}* (#${ref}) is ready! 🎉\nPlease come and pick it up at ___, or let us know if you would like it delivered and where.\n\nTrack the progress from your dashboard → Track my order.`,
+  out_for_delivery: (item, ref) =>
+    `Your order *${item}* (#${ref}) is on the way! 🚚\nIt has left us and is heading to you. Please stay reachable at your saved contact.\n\nTrack the progress from your dashboard → Track my order.`,
+  goods_given: (item, ref) =>
+    `Your order *${item}* (#${ref}) has been handed over to you. 🤝\nPlease confirm you received it on your dashboard → Track my order.`,
   delivered: (item, ref) =>
     `Your order *${item}* (#${ref}) has been delivered. ✅\nPlease confirm you received it on your dashboard → Track my order.\nThank you for shopping with Campus Crave!`,
+};
+
+/**
+ * Which announcement fits a fulfilment action, so pressing a status button
+ * produces the right wording instead of a generic template.
+ */
+const ACTION_NOTIFY_STAGE = {
+  ready_for_pickup: "ready",
+  out_for_delivery: "out_for_delivery",
+  goods_given: "goods_given",
+  delivered: "delivered",
 };
 
 function buildStageNotification(order, stage) {
@@ -1040,14 +1055,30 @@ exports.adminUpdateOrderStatus = async (req, res) => {
     // Hand the admin a ready-to-open WhatsApp link so they can confirm details
     // with the buyer (e.g. where to receive it) in one click.
     const contact = buyerContact(order);
+
+    // Pressing a status button is also an announcement, so the same update is
+    // recorded for the buyer's Track my order page instead of only WhatsApp.
+    const stage = ACTION_NOTIFY_STAGE[action];
+    const announcement = stage ? buildStageNotification(updated || order, stage) : "";
+    if (announcement) {
+      updated.adminNotifications = [...(updated.adminNotifications || []), {
+        stage,
+        by: (req.user && (req.user.name || req.user.email)) || "Campus Crave",
+        message: announcement,
+        at: now,
+      }];
+      await StoreOrder.findByIdAndUpdate(id, { $set: { adminNotifications: updated.adminNotifications } });
+    }
+
     res.status(200).json({
       success: true,
       order: updated,
       buyerContact: contact,
+      // The prefilled text, returned separately so the admin sees the exact
+      // message before choosing to open WhatsApp.
+      message: announcement,
       whatsappLink: contact
-        ? `https://wa.me/${contact}?text=${encodeURIComponent(
-            buildBuyerEnquiry(order, action === "out_for_delivery" || isGoodsGiven || action === "delivered" ? "delivered" : "confirm")
-          )}`
+        ? `https://wa.me/${contact}?text=${encodeURIComponent(announcement)}`
         : null,
     });
   } catch (err) {
