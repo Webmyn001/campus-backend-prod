@@ -183,6 +183,7 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
     buyerName: buyer.name || "",
     buyerEmail: buyer.email || "",
     buyerPhone: (deliveryZone === "outside" ? deliveryPhone : "") || buyer.phone || "",
+    buyerWhatsapp: buyer.whatsapp || buyer.phone || deliveryPhone || "",
     buyerAddress: deliveryLocation || "",
     productId: product._id,
     productSnapshot: {
@@ -202,6 +203,11 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
     paymentStatus: "verified",
     orderStatus: "processing",
     deliveryStatus: deliveryMethod === "delivery" ? "pending" : "ready_for_pickup",
+    statusHistory: [
+      { status: "pending_payment", label: TRACKING_LABELS.pending_payment, note: "Order placed, awaiting payment", by: "buyer", at: new Date() },
+      { status: "payment_received", label: TRACKING_LABELS.payment_received, note: "Payment confirmed by Campus Crave", by: "system", at: new Date() },
+      { status: "processing", label: TRACKING_LABELS.processing, note: "We are preparing your item", by: "system", at: new Date() },
+    ],
   });
 
   notify(
@@ -280,7 +286,19 @@ exports.verifyStorePayment = async (req, res) => {
       deliveryPhone: phone,
     });
 
-    res.status(201).json({ success: true, message: "Payment verified. Order created.", order });
+    res.status(201).json({
+      success: true,
+      message: "Payment verified. Order created.",
+      order,
+      // Tell the buyer exactly where to watch the order progress.
+      tracking: {
+        headline: "Payment received — we're processing your order",
+        message:
+          "Your payment is confirmed. Open Track my order in your CampusCrave dashboard to follow every step, from payment to delivery.",
+        trackingUrl: "/oktober-fest/orders",
+        whatsappHint: "We will also message you on WhatsApp when your item is ready or on its way.",
+      },
+    });
   } catch (err) {
     console.error("❌ verifyStorePayment error:", err);
     const status = err.status || 500;
@@ -377,6 +395,7 @@ exports.confirmStoreReceipt = async (req, res) => {
     }
 
     const now = new Date();
+    pushHistory(order, "completed", { note: "Buyer confirmed they received the item", by: "buyer", at: now });
     const updated = await StoreOrder.findByIdAndUpdate(
       id,
       {
@@ -386,6 +405,7 @@ exports.confirmStoreReceipt = async (req, res) => {
           deliveredAt: now,
           orderStatus: "completed",
           deliveryStatus: "delivered",
+          statusHistory: order.statusHistory,
         },
       },
       { new: true }
@@ -411,6 +431,64 @@ function normalizeDate(v) {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ============================================================
+// Fulfilment tracking helpers
+// ============================================================
+const TRACKING_LABELS = {
+  pending_payment: "Payment sent",
+  payment_received: "Payment received by Campus Crave",
+  processing: "Order confirmed — being processed",
+  ready_for_pickup: "Ready for pickup",
+  out_for_delivery: "Out for delivery",
+  goods_given: "Goods handed over to buyer",
+  delivered: "Delivered successfully",
+  completed: "Order completed",
+  cancelled: "Order cancelled",
+  refunded: "Payment refunded",
+};
+
+/** Append one entry to the order's audit trail. */
+function pushHistory(order, status, { note = "", by = "system", at = new Date() } = {}) {
+  order.statusHistory = order.statusHistory || [];
+  const label = TRACKING_LABELS[status] || String(status).replace(/_/g, " ");
+  // Guard against duplicate entries when a webhook retries.
+  const last = order.statusHistory[order.statusHistory.length - 1];
+  if (last && last.status === status) {
+    if (note) last.note = note;
+    return order;
+  }
+  order.statusHistory.push({ status, label, note, by, at });
+  return order;
+}
+
+/** Best-effort WhatsApp contact for a buyer (delivery phone first, then profile). */
+function buyerContact(order) {
+  return String(order.buyerWhatsapp || order.buyerPhone || "").replace(/[^\d]/g, "");
+}
+
+/**
+ * Prefilled admin->buyer WhatsApp enquiry. Asks where the buyer wants the item,
+ * and states exactly which item/payment we are talking about.
+ */
+function buildBuyerEnquiry(order, intent = "confirm") {
+  const item = `${order.productSnapshot?.name || "your item"} x${order.quantity}`;
+  const ref = order.orderNumber;
+  const headers = {
+    confirm:
+      `Hello ${order.buyerName || "there"}, this is Campus Crave Store confirming your payment.`,
+    pickup:
+      `Hello ${order.buyerName || "there"}, your order from Campus Crave Store is ready.`,
+    delivered:
+      `Hello ${order.buyerName || "there"}, your Campus Crave Store order has been handed over.`,
+  };
+  const bodies = {
+    confirm: `We have confirmed your payment for *${item}*.\nWhere will you be willing to receive it?`,
+    pickup: `Your item *${item}* is ready for pickup at Campus Crave. Please let us know a convenient time.`,
+    delivered: `We have delivered *${item}*. Please confirm on your dashboard that you received it.`,
+  };
+  return `${headers[intent] || headers.confirm}\n━━━━━━━━━━━━━━━━━━\n📦 *Item:* ${item}\n🧾 *Order:* #${ref}\n💰 *Paid:* ₦${Number(order.totalPaid || 0).toLocaleString()}\n━━━━━━━━━━━━━━━━━━\n\n${bodies[intent] || bodies.confirm}\n\nThank you!`;
 }
 
 exports.adminGetConfig = async (req, res) => {
@@ -685,6 +763,27 @@ exports.adminGetOrders = async (req, res) => {
   }
 };
 
+exports.adminGetOrderEnquiry = async (req, res) => {
+  const { id } = req.params;
+  const { intent = "confirm" } = req.query;
+  try {
+    const order = await StoreOrder.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    const contact = buyerContact(order);
+    const message = buildBuyerEnquiry(order, intent);
+    res.status(200).json({
+      success: true,
+      buyerContact: contact,
+      buyerName: order.buyerName || "",
+      message,
+      whatsappLink: contact ? `https://wa.me/${contact}?text=${encodeURIComponent(message)}` : null,
+    });
+  } catch (err) {
+    console.error("❌ oktoberFest adminGetOrderEnquiry error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 exports.adminUpdateOrderStatus = async (req, res) => {
   const { id } = req.params;
   const { action } = req.body;
@@ -692,38 +791,85 @@ exports.adminUpdateOrderStatus = async (req, res) => {
     const order = await StoreOrder.findById(id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
+    const { note, handedOver } = req.body;
+
     const allowed = {
-      processing: ["ready_for_pickup", "out_for_delivery", "delivered"],
-      ready_for_pickup: ["out_for_delivery", "delivered"],
-      out_for_delivery: ["delivered"],
+      processing: ["ready_for_pickup", "out_for_delivery", "delivered", "goods_given"],
+      ready_for_pickup: ["out_for_delivery", "delivered", "goods_given"],
+      out_for_delivery: ["delivered", "goods_given"],
     };
     const next = allowed[order.orderStatus] || [];
     if (!next.includes(action)) {
       return res.status(400).json({ success: false, message: `Cannot move from ${order.orderStatus} to ${action}` });
     }
 
-    const updated = await StoreOrder.findByIdAndUpdate(
-      id,
+    // "goods_given" is an admin-only attestation that the item physically
+    // changed hands. It records the handover without forcing the order
+    // straight to Delivered, so the buyer still confirms receipt themselves.
+    const isGoodsGiven = action === "goods_given";
+    const now = new Date();
+    const noteText = typeof note === "string" ? note.trim().slice(0, 300) : "";
+
+    if (isGoodsGiven) {
+      order.goodsGiven = true;
+      order.goodsGivenAt = now;
+      order.goodsGivenBy = (req.user && (req.user.name || req.user.email)) || "Campus Crave";
+    }
+
+    pushHistory(
+      order,
+      isGoodsGiven ? "goods_given" : action,
       {
-        $set: {
-          orderStatus: action,
-          deliveryStatus: action,
-          deliveredAt: action === "delivered" ? new Date() : order.deliveredAt,
-        },
-      },
-      { new: true }
+        note: noteText || (isGoodsGiven ? "Admin confirmed the goods were given to the buyer" : ""),
+        by: "admin",
+        at: now,
+      }
     );
+
+    const set = {
+      statusHistory: order.statusHistory,
+      goodsGiven: order.goodsGiven,
+      goodsGivenAt: order.goodsGivenAt,
+      goodsGivenBy: order.goodsGivenBy,
+    };
+
+    if (!isGoodsGiven) {
+      set.orderStatus = action;
+      set.deliveryStatus = action;
+      if (action === "delivered") {
+        set.deliveredAt = now;
+        // Pressing Delivered also attests the handover.
+        set.goodsGiven = true;
+        set.goodsGivenAt = order.goodsGivenAt || now;
+        set.goodsGivenBy = order.goodsGivenBy || (req.user && (req.user.name || req.user.email)) || "Campus Crave";
+      }
+    }
+
+    const updated = await StoreOrder.findByIdAndUpdate(id, { $set: set }, { new: true });
 
     notify(
       order.buyerEmail,
       "Your Campus Crave Oktober Fest order status has changed",
       `<p>Hello ${order.buyerName || "there"},</p>
-       <p>Order <strong>${order.orderNumber}</strong> is now: <strong>${action.replace(/_/g, " ")}</strong>.</p>
-       <p>Track it from your CampusCrave dashboard.</p>
+       <p>Order <strong>${order.orderNumber}</strong> is now: <strong>${TRACKING_LABELS[isGoodsGiven ? "goods_given" : action] || action.replace(/_/g, " ")}</strong>.</p>
+       ${noteText ? `<p>Note from Campus Crave: ${noteText}</p>` : ""}
+       <p>Track it any time from your CampusCrave dashboard &rarr; Track my order.</p>
        <p>Best regards,<br/>CampusCrave Team</p>`
     );
 
-    res.status(200).json({ success: true, order: updated });
+    // Hand the admin a ready-to-open WhatsApp link so they can confirm details
+    // with the buyer (e.g. where to receive it) in one click.
+    const contact = buyerContact(order);
+    res.status(200).json({
+      success: true,
+      order: updated,
+      buyerContact: contact,
+      whatsappLink: contact
+        ? `https://wa.me/${contact}?text=${encodeURIComponent(
+            buildBuyerEnquiry(order, action === "out_for_delivery" || isGoodsGiven || action === "delivered" ? "delivered" : "confirm")
+          )}`
+        : null,
+    });
   } catch (err) {
     console.error("❌ oktoberFest adminUpdateOrderStatus error:", err);
     res.status(500).json({ success: false, message: "Server error" });

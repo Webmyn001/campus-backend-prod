@@ -7,6 +7,7 @@ const {
   adminCreateSaleProduct,
   adminGetOrders,
   adminUpdateOrderStatus,
+  adminGetOrderEnquiry,
 } = require("../Controller/oktoberFestController");
 const authMiddleware = require("../Middleware/auth");
 const adminMiddleware = require("../Middleware/admin");
@@ -25,5 +26,7 @@ router.delete("/oktober-fest/products/:id", adminRemoveFromSale);
 
 router.get("/oktober-fest/orders", adminGetOrders);
 router.post("/oktober-fest/orders/:id/status", adminUpdateOrderStatus);
+// Prefilled admin -> buyer WhatsApp enquiry (payment confirmed + where to receive)
+router.get("/oktober-fest/orders/:id/enquiry", adminGetOrderEnquiry);
 
 module.exports = router;

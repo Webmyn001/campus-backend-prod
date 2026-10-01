@@ -26,6 +26,9 @@ const storeOrderSchema = new mongoose.Schema(
     buyerName: { type: String, trim: true },
     buyerEmail: { type: String, trim: true, lowercase: true },
     buyerPhone: { type: String, trim: true },
+    // Kept separate from buyerPhone so the admin can always reach the buyer on
+    // WhatsApp, even for campus pickups where no delivery phone was collected.
+    buyerWhatsapp: { type: String, trim: true },
     buyerAddress: { type: String, trim: true },
 
     productId: {
@@ -98,6 +101,30 @@ const storeOrderSchema = new mongoose.Schema(
     buyerConfirmed: { type: Boolean, default: false },
     buyerConfirmedAt: { type: Date },
     deliveredAt: { type: Date },
+
+    // ---- Fulfilment tracking ----
+    // Append-only audit trail. Every payment/order state change lands here so
+    // the buyer can see a real progress timeline instead of guessing.
+    statusHistory: {
+      type: [
+        {
+          _id: false,
+          status: { type: String },
+          label: { type: String },
+          note: { type: String, trim: true },
+          by: { type: String, enum: ["system", "buyer", "admin"], default: "system" },
+          at: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+
+    // Admin confirmation that the goods physically changed hands. Tracked
+    // separately from orderStatus so the buyer sees "handed over" even when
+    // the admin never pressed the Delivered button.
+    goodsGiven: { type: Boolean, default: false },
+    goodsGivenAt: { type: Date },
+    goodsGivenBy: { type: String, trim: true },
 
     adminNotified: { type: Boolean, default: false },
     adminNotifiedAt: { type: Date },
