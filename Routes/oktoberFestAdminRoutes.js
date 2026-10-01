@@ -9,6 +9,7 @@ const {
   adminUpdateOrderStatus,
   adminGetOrderEnquiry,
   adminNotifyBuyerStage,
+  adminDeleteOrder,
 } = require("../Controller/oktoberFestController");
 const authMiddleware = require("../Middleware/auth");
 const adminMiddleware = require("../Middleware/admin");
@@ -31,5 +32,7 @@ router.post("/oktober-fest/orders/:id/status", adminUpdateOrderStatus);
 router.get("/oktober-fest/orders/:id/enquiry", adminGetOrderEnquiry);
 // Proactive stage update to the buyer (processing / ready / delivered)
 router.post("/oktober-fest/orders/:id/notify", adminNotifyBuyerStage);
+// Permanently remove a settled order (completed / cancelled / refunded only)
+router.delete("/oktober-fest/orders/:id", adminDeleteOrder);
 
 module.exports = router;

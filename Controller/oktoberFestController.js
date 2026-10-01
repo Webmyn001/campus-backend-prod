@@ -892,6 +892,78 @@ exports.adminNotifyBuyerStage = async (req, res) => {
   }
 };
 
+/**
+ * Permanently remove a settled order.
+ *
+ * Deleting removes the row, so every admin total that is summed from
+ * `StoreOrder` (total revenue, total orders, verified orders, per-day revenue)
+ * stops counting it immediately — nothing is cached or denormalised.
+ *
+ * Stock is deliberately NOT returned by default: a completed order usually
+ * means the item physically changed hands, and silently re-adding it could
+ * oversell. Admins can opt in per deletion with `restock: true`.
+ */
+exports.adminDeleteOrder = async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
+      return res.status(400).json({ success: false, message: "Invalid order" });
+    }
+    const order = await StoreOrder.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    // Only settled orders may be removed, so live work can never be lost by
+    // a misclick. Buyers still relying on an open order keep their timeline.
+    const settled = ["completed", "buyer_confirmed", "cancelled", "refunded"];
+    if (!settled.includes(order.orderStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Only completed or cancelled orders can be deleted",
+      });
+    }
+
+    const restock = req.body?.restock === true || req.body?.restock === "true";
+    let restocked = 0;
+    if (restock && order.productId) {
+      const result = await Product.findByIdAndUpdate(order.productId, {
+        $inc: {
+          "oktoberFest.soldCount": -Math.max(1, Number(order.quantity) || 1),
+        },
+      });
+      // Clamp so a double-delete can never drive soldCount negative.
+      if (result) {
+        const sold = Math.max(0, Number(result.oktoberFest?.soldCount) || 0);
+        if (sold !== Number(result.oktoberFest?.soldCount)) {
+          await Product.findByIdAndUpdate(order.productId, {
+            $set: { "oktoberFest.soldCount": sold },
+          });
+        }
+        restocked = Math.max(1, Number(order.quantity) || 1);
+      }
+    }
+
+    await StoreOrder.findByIdAndDelete(id);
+
+    notify(
+      PLATFORM_SUPPORT_EMAIL,
+      "🗑️ Oktober Fest order deleted — #" + order.orderNumber,
+      `<p>Admin permanently deleted order <strong>#${order.orderNumber}</strong>.</p>
+       <p>Item: ${order.productSnapshot?.name || "unknown"} × ${order.quantity}</p>
+       <p>Value: ₦${Number(order.totalPaid) || 0} · Stock returned: ${restocked ? "yes" : "no"}</p>`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Order #${order.orderNumber} deleted`,
+      restocked,
+      removedValue: Number(order.totalPaid) || 0,
+    });
+  } catch (err) {
+    console.error("❌ oktoberFest adminDeleteOrder error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 exports.adminUpdateOrderStatus = async (req, res) => {
   const { id } = req.params;
   const { action } = req.body;
