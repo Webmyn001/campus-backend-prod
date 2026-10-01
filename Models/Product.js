@@ -87,6 +87,16 @@ const productSchema = new mongoose.Schema({
     isManaged: { type: Boolean, default: false },
     ownerName: { type: String },
 
+    // Optional dispatch/lead-time promise, in days (e.g. 8 = "delivers within
+    // 8 days"). Left null for products with no stated lead time, and the
+    // storefront hides the promise entirely when it is not set.
+    maxDeliveryDays: {
+        type: Number,
+        min: 1,
+        max: 365,
+        default: null,
+    },
+
     // Seller Information (Can be prefilled for Admin)
     sellerName: { type: String },
     sellerWhatsApp: { type: String },

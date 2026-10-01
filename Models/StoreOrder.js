@@ -110,6 +110,8 @@ const storeOrderSchema = new mongoose.Schema(
           _id: false,
           stage: { type: String },
           by: { type: String, trim: true },
+          // The rendered update, replayed on the buyer's Track my order page.
+          message: { type: String },
           at: { type: Date, default: Date.now },
         },
       ],

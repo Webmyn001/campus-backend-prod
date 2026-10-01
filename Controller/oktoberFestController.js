@@ -83,6 +83,8 @@ function serializeSaleProduct(product, config) {
     fullDescription: product.fullDescription,
     category: product.category,
     type: product.type,
+    // `null` when the admin never set a lead time, so the card stays silent.
+    maxDeliveryDays: Number(product.maxDeliveryDays) > 0 ? Number(product.maxDeliveryDays) : null,
     mainImage: product.mainImage,
     images: product.images,
     price: Number(product.price) || 0,
@@ -190,6 +192,8 @@ async function buildStoreOrderFromVerifiedTx({ tx, buyer, product, quantity, del
       name: product.name,
       image: (product.mainImage && product.mainImage.url) || (product.images && product.images[0] && product.images[0].url) || "",
       category: product.category,
+      type: product.type,
+      maxDeliveryDays: Number(product.maxDeliveryDays) > 0 ? Number(product.maxDeliveryDays) : null,
     },
     quantity: qty,
     originalPrice: original,
@@ -500,7 +504,7 @@ const NOTIFY_MESSAGES = {
   processing: (item, ref) =>
     `Good news! We have started processing your order *${item}* (#${ref}). 📦\nYour item is being packed now.\n\nYou can follow every step from your CampusCrave dashboard → Track my order.`,
   ready: (item, ref) =>
-    `Your order *${item}* (#${ref}) is ready! 🎉\nPlease come and pick it up at Campus Crave, or let us know if you would like it delivered and where.\n\nTrack the progress from your dashboard → Track my order.`,
+    `Your order *${item}* (#${ref}) is ready! 🎉\nPlease come and pick it up at ___, or let us know if you would like it delivered and where.\n\nTrack the progress from your dashboard → Track my order.`,
   delivered: (item, ref) =>
     `Your order *${item}* (#${ref}) has been delivered. ✅\nPlease confirm you received it on your dashboard → Track my order.\nThank you for shopping with Campus Crave!`,
 };
@@ -530,6 +534,7 @@ exports.adminGetConfig = async (req, res) => {
         description: p.description || "",
         category: p.category,
         type: p.type,
+        maxDeliveryDays: Number(p.maxDeliveryDays) > 0 ? Number(p.maxDeliveryDays) : null,
         image: (p.mainImage && p.mainImage.url) || (p.images && p.images[0] && p.images[0].url) || "",
         originalPrice: Number(os.originalPrice) || Number(p.price) || 0,
         salePrice: Number(os.salePrice) || 0,
@@ -602,9 +607,26 @@ function validateSalePrices(originalPrice, salePrice) {
   return { original, sale };
 }
 
+/**
+ * The optional "max days of delivery" promise on a deal.
+ *
+ * - `undefined`      → the admin did not touch the field; leave it untouched.
+ * - `""` / `null`    → the admin cleared it; store `null` so the storefront hides it.
+ * - `"8"` / `8`      → validated whole number between 1 and 365.
+ */
+function normalizeMaxDeliveryDays(input) {
+  if (input === undefined) return { provided: false };
+  if (input === null || input === "") return { provided: true, value: null };
+  const days = Number(input);
+  if (!Number.isFinite(days) || !Number.isInteger(days) || days < 1 || days > 365) {
+    return { provided: true, error: "Max days of delivery must be a whole number between 1 and 365" };
+  }
+  return { provided: true, value: days };
+}
+
 exports.adminSetProductSale = async (req, res) => {
   const { id } = req.params;
-  const { enabled, originalPrice, salePrice, stock, startDate, endDate, name, description, category } = req.body;
+  const { enabled, originalPrice, salePrice, stock, startDate, endDate, name, description, category, maxDeliveryDays } = req.body;
   try {
     if (!mongoose.Types.ObjectId.isValid(String(id))) {
       return res.status(400).json({ success: false, message: "Invalid product" });
@@ -654,6 +676,14 @@ exports.adminSetProductSale = async (req, res) => {
       patch.description = String(description).trim().slice(0, 300);
     }
 
+    // Optional lead-time promise: only touched when the admin sent the field,
+    // and an empty value clears it so the storefront stops advertising it.
+    const delivery = normalizeMaxDeliveryDays(maxDeliveryDays);
+    if (delivery.error) {
+      return res.status(400).json({ success: false, message: delivery.error });
+    }
+    if (delivery.provided) patch.maxDeliveryDays = delivery.value;
+
     const updated = await Product.findByIdAndUpdate(id, { $set: patch }, { new: true });
     res.status(200).json({ success: true, product: updated });
   } catch (err) {
@@ -691,10 +721,14 @@ exports.adminCreateSaleProduct = async (req, res) => {
     stock,
     startDate,
     endDate,
+    maxDeliveryDays,
   } = req.body;
   try {
     const checked = validateSalePrices(originalPrice, salePrice);
     if (checked.error) return res.status(400).json({ success: false, message: checked.error });
+
+    const delivery = normalizeMaxDeliveryDays(maxDeliveryDays);
+    if (delivery.error) return res.status(400).json({ success: false, message: delivery.error });
 
     let mainImage = {};
     if (image && typeof image === "string") {
@@ -744,6 +778,7 @@ exports.adminCreateSaleProduct = async (req, res) => {
       location_city: admin.location_city,
       isManaged: true,
       ownerName: "CampusCrave Official Store",
+      ...(delivery.provided ? { maxDeliveryDays: delivery.value } : {}),
       oktoberFest: {
         enabled: true,
         originalPrice: checked.original,
@@ -827,13 +862,15 @@ exports.adminNotifyBuyerStage = async (req, res) => {
       return res.status(400).json({ success: false, message: "This buyer has no WhatsApp number on file" });
     }
 
+    const message = buildStageNotification(order, stage);
     const by = (req.user && (req.user.name || req.user.email)) || "Campus Crave";
-    order.adminNotifications = order.adminNotifications || [];
-    order.adminNotifications.push({ stage, by, at: new Date() });
 
+    // The same update is kept on the order so the buyer's Track my order page
+    // shows it in-app, not only over WhatsApp/email.
+    order.adminNotifications = order.adminNotifications || [];
+    order.adminNotifications.push({ stage, by, message, at: new Date() });
     await StoreOrder.findByIdAndUpdate(id, { $set: { adminNotifications: order.adminNotifications } });
 
-    const message = buildStageNotification(order, stage);
     notify(
       order.buyerEmail,
       `Update on your Campus Crave order #${order.orderNumber}`,
