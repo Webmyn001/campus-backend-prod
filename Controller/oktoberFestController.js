@@ -491,6 +491,27 @@ function buildBuyerEnquiry(order, intent = "confirm") {
   return `${headers[intent] || headers.confirm}\n━━━━━━━━━━━━━━━━━━\n📦 *Item:* ${item}\n🧾 *Order:* #${ref}\n💰 *Paid:* ₦${Number(order.totalPaid || 0).toLocaleString()}\n━━━━━━━━━━━━━━━━━━\n\n${bodies[intent] || bodies.confirm}\n\nThank you!`;
 }
 
+/**
+ * Stage-specific proactive update the admin sends to the buyer at each of the
+ * three fulfilment stages. Unlike buildBuyerEnquiry (which asks a question),
+ * these tell the buyer where their item is and point them at Track my order.
+ */
+const NOTIFY_MESSAGES = {
+  processing: (item, ref) =>
+    `Good news! We have started processing your order *${item}* (#${ref}). 📦\nYour item is being packed now.\n\nYou can follow every step from your CampusCrave dashboard → Track my order.`,
+  ready: (item, ref) =>
+    `Your order *${item}* (#${ref}) is ready! 🎉\nPlease come and pick it up at Campus Crave, or let us know if you would like it delivered and where.\n\nTrack the progress from your dashboard → Track my order.`,
+  delivered: (item, ref) =>
+    `Your order *${item}* (#${ref}) has been delivered. ✅\nPlease confirm you received it on your dashboard → Track my order.\nThank you for shopping with Campus Crave!`,
+};
+
+function buildStageNotification(order, stage) {
+  const item = `${order.productSnapshot?.name || "your item"} x${order.quantity}`;
+  const header = `Hello ${order.buyerName || "there"}, here is an update on your Campus Crave order.`;
+  const body = (NOTIFY_MESSAGES[stage] || NOTIFY_MESSAGES.processing)(item, order.orderNumber);
+  return `${header}\n━━━━━━━━━━━━━━━━━━\n📦 *Item:* ${item}\n🧾 *Order:* #${order.orderNumber}\n━━━━━━━━━━━━━━━━━━\n\n${body}`;
+}
+
 exports.adminGetConfig = async (req, res) => {
   try {
     const config = await getCampaignSetting();
@@ -780,6 +801,56 @@ exports.adminGetOrderEnquiry = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ oktoberFest adminGetOrderEnquiry error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+/**
+ * Proactively notify the buyer about a fulfilment stage (processing / ready /
+ * delivered). Records the ping in adminNotifications and returns a prefilled
+ * WhatsApp link. Does NOT change orderStatus — the admin still presses the
+ * separate status buttons to move the order along.
+ */
+exports.adminNotifyBuyerStage = async (req, res) => {
+  const { id } = req.params;
+  const { stage } = req.body;
+  try {
+    const allowed = ["processing", "ready", "delivered"];
+    if (!allowed.includes(stage)) {
+      return res.status(400).json({ success: false, message: `Unknown stage "${stage}"` });
+    }
+    const order = await StoreOrder.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    const contact = buyerContact(order);
+    if (!contact) {
+      return res.status(400).json({ success: false, message: "This buyer has no WhatsApp number on file" });
+    }
+
+    const by = (req.user && (req.user.name || req.user.email)) || "Campus Crave";
+    order.adminNotifications = order.adminNotifications || [];
+    order.adminNotifications.push({ stage, by, at: new Date() });
+
+    await StoreOrder.findByIdAndUpdate(id, { $set: { adminNotifications: order.adminNotifications } });
+
+    const message = buildStageNotification(order, stage);
+    notify(
+      order.buyerEmail,
+      `Update on your Campus Crave order #${order.orderNumber}`,
+      `<p>Hello ${order.buyerName || "there"},</p>
+       <p>${message.replace(/\n+/g, " ").replace(/\*/g, "")}</p>
+       <p>Track it any time from your dashboard &rarr; Track my order.</p>
+       <p>Best regards,<br/>CampusCrave Team</p>`
+    );
+
+    res.status(200).json({
+      success: true,
+      message,
+      whatsappLink: `https://wa.me/${contact}?text=${encodeURIComponent(message)}`,
+      buyerContact: contact,
+    });
+  } catch (err) {
+    console.error("❌ oktoberFest adminNotifyBuyerStage error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

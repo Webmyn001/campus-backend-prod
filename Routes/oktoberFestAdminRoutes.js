@@ -8,6 +8,7 @@ const {
   adminGetOrders,
   adminUpdateOrderStatus,
   adminGetOrderEnquiry,
+  adminNotifyBuyerStage,
 } = require("../Controller/oktoberFestController");
 const authMiddleware = require("../Middleware/auth");
 const adminMiddleware = require("../Middleware/admin");
@@ -28,5 +29,7 @@ router.get("/oktober-fest/orders", adminGetOrders);
 router.post("/oktober-fest/orders/:id/status", adminUpdateOrderStatus);
 // Prefilled admin -> buyer WhatsApp enquiry (payment confirmed + where to receive)
 router.get("/oktober-fest/orders/:id/enquiry", adminGetOrderEnquiry);
+// Proactive stage update to the buyer (processing / ready / delivered)
+router.post("/oktober-fest/orders/:id/notify", adminNotifyBuyerStage);
 
 module.exports = router;

@@ -102,6 +102,20 @@ const storeOrderSchema = new mongoose.Schema(
     buyerConfirmedAt: { type: Date },
     deliveredAt: { type: Date },
 
+    // Tracks each time the admin proactively notified the buyer about a stage.
+    // Separate from statusHistory, which records actual state changes.
+    adminNotifications: {
+      type: [
+        {
+          _id: false,
+          stage: { type: String },
+          by: { type: String, trim: true },
+          at: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
+
     // ---- Fulfilment tracking ----
     // Append-only audit trail. Every payment/order state change lands here so
     // the buyer can see a real progress timeline instead of guessing.
