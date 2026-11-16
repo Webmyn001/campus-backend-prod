@@ -67,8 +67,11 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:8080",
   "https://campuscrave-lu04.onrender.com",
+  "https://campus-crave-prod.onrender.com",
   "https://www.campuscrave.ng",
   "https://campuscrave.ng",
+  "https://www.campuscrave.com.ng",
+  "https://campuscrave.com.ng",
   "https://campus-plum.vercel.app"
 ];
 
