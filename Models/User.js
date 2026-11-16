@@ -75,6 +75,7 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false },
   verificationToken: { type: String },
   verificationTokenExpires: { type: Date },
+  lastVerificationEmailSent: { type: Date },
 
   // ===== Reset password =====
   resetPasswordToken: { type: String },

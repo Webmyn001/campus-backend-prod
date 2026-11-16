@@ -3,9 +3,13 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const cloudinary = require("../config/cloudinary");
+const { normalizeEmail, isNonEmptyString, sanitizeText } = require("../utils/security");
 
 // Generate JWT Token
 const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1d" });
 };
 
@@ -16,6 +20,9 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 exports.googleAuth = async (req, res) => {
   try {
     const { token } = req.body; // This is the access_token from useGoogleLogin
+    if (!isNonEmptyString(token, 4096)) {
+      return res.status(400).json({ message: "A valid Google token is required." });
+    }
 
     // Fetch user info from Google using the access_token
     const googleRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -27,7 +34,11 @@ exports.googleAuth = async (req, res) => {
     }
 
     const payload = await googleRes.json();
-    const { email, name, picture, sub: googleId } = payload;
+    const { name, picture, sub: googleId } = payload;
+    const email = normalizeEmail(payload.email);
+    if (!email || !googleId) {
+      return res.status(400).json({ message: "Google account did not provide a valid email." });
+    }
 
     let user = await User.findOne({ email });
 
@@ -70,7 +81,17 @@ exports.googleAuth = async (req, res) => {
 
 // Signup
 exports.signup = async (req, res) => {
-  const { email, password, name } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  const { password } = req.body || {};
+  const name = sanitizeText(req.body?.name, 120);
+
+  if (!email) {
+    return res.status(400).json({ message: "A valid email is required." });
+  }
+  if (typeof password !== "string" || password.length < 6 || password.length > 128) {
+    return res.status(400).json({ message: "Password must be between 6 and 128 characters." });
+  }
+
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -128,7 +149,12 @@ exports.signup = async (req, res) => {
 
 exports.verifyEmail = async (req, res) => {
   try {
-    const { token, email } = req.query;
+    const email = normalizeEmail(req.query.email);
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+
+    if (!email || !isNonEmptyString(token, 256)) {
+      return res.status(400).json({ success: false, message: "Invalid verification link." });
+    }
 
     const user = await User.findOne({ email });
 
@@ -177,15 +203,18 @@ exports.verifyEmail = async (req, res) => {
 
 // Resend Verification Email with cooldown
 exports.resendVerificationEmail = async (req, res) => {
-  const { email } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  if (!email) {
+    return res.status(400).json({ success: false, message: "A valid email is required." });
+  }
+
   try {
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
-
-    if (user.isVerified) {
-      return res.status(200).json({ success: true, message: "Email is already verified." });
+    if (!user || user.isVerified) {
+      return res.status(200).json({
+        success: true,
+        message: "If this account needs verification, an email has been sent.",
+      });
     }
 
     // COOLDOWN: 2 minutes (120000 ms)
@@ -230,9 +259,10 @@ exports.resendVerificationEmail = async (req, res) => {
 
 // Login
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  const { password } = req.body || {};
   try {
-    if (!email || !password) {
+    if (!email || typeof password !== "string" || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
@@ -261,9 +291,10 @@ exports.login = async (req, res) => {
 
 // Admin Login
 exports.adminLogin = async (req, res) => {
-  const { email, password } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  const { password } = req.body || {};
   try {
-    if (!email || !password) {
+    if (!email || typeof password !== "string" || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
@@ -288,26 +319,23 @@ exports.adminLogin = async (req, res) => {
       user,
     });
   } catch (error) {
-    console.error("❌ Admin Login Fatal Error:", {
-        message: error.message,
-        stack: error.stack,
-        email: email
-    });
-    res.status(500).json({ 
-        success: false, 
-        message: "Server error during admin authentication",
-        devError: error.message 
+    console.error("Admin Login Error:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Server error during admin authentication",
     });
   }
 };
 
-// Get All Users
+// Get All Users (admin only - enforced by the route)
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find();
+    const users = await User.find()
+      .select("-password -verificationToken -verificationTokenExpires -resetPasswordToken -resetPasswordExpires")
+      .sort({ createdAt: -1 });
     res.status(200).json(users);
   } catch (error) {
-    console.error("GetAllUsers Error:", error);
+    console.error("GetAllUsers Error:", error.message);
     res.status(500).json({ message: "Failed to fetch users" });
   }
 };
@@ -320,8 +348,16 @@ exports.getAllUsers = async (req, res) => {
 
 // Reset Password
 exports.resetPassword = async (req, res) => {
-  const { token, email } = req.query;
-  const { password } = req.body;
+  const email = normalizeEmail(req.query.email);
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  const { password } = req.body || {};
+
+  if (!email || !isNonEmptyString(token, 256)) {
+    return res.status(400).json({ message: "Invalid or expired token." });
+  }
+  if (typeof password !== "string" || password.length < 6 || password.length > 128) {
+    return res.status(400).json({ message: "Password must be between 6 and 128 characters." });
+  }
 
   try {
     const user = await User.findOne({
@@ -349,11 +385,20 @@ exports.resetPassword = async (req, res) => {
 
 // Forgot Password
 exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const email = normalizeEmail(req.body?.email);
+  if (!email) {
+    return res.status(400).json({ message: "A valid email is required." });
+  }
+
   try {
     const user = await User.findOne({ email });
+
+    // Always answer the same way so the endpoint cannot be used to enumerate
+    // registered email addresses.
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
+      return res.status(200).json({
+        message: "If an account exists for this email, a reset link has been sent.",
+      });
     }
 
     // Generate reset token

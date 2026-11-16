@@ -6,8 +6,49 @@ const Product = require("../Models/Product");
 const Subscription = require("../Models/Subscription");
 const Setting = require("../Models/Setting");
 const cloudinary = require("../config/cloudinary");
+const { escapeRegex, isObjectId, sanitizeText } = require("../utils/security");
+const { normalizeImagePayload } = require("../utils/images");
 
 require("dotenv").config();
+
+const PUBLIC_USER_FIELDS =
+    "name username phone campusId profilePhoto course year hostel school_name location_city status whatsapp memberSince createdAt email isUserVerified role views";
+
+const SELF_EDITABLE_FIELDS = [
+    "name",
+    "username",
+    "phone",
+    "campusId",
+    "course",
+    "year",
+    "hostel",
+    "school_name",
+    "location_city",
+    "status",
+    "whatsapp",
+    "profilePhoto",
+];
+
+const ADMIN_ONLY_FIELDS = ["isUserVerified", "role"];
+
+function stringField(value, max = 120) {
+    if (typeof value !== "string") return null;
+    const cleaned = value.replace(/\u0000/g, "").trim();
+    if (cleaned.length > max) return null;
+    return cleaned;
+}
+
+function usernameField(value) {
+    if (typeof value !== "string") return { error: "Username must be text." };
+    const username = value.trim();
+    if (username.length < 3 || username.length > 30) {
+        return { error: "Username must be between 3 and 30 characters." };
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+        return { error: "Username may only contain letters, numbers, dots, dashes and underscores." };
+    }
+    return { value: username };
+}
 
 // TEMPORARY promotion: keep every personal store link active regardless of
 // subscription, so browsing/selling is friction-free for launch week.
@@ -15,13 +56,15 @@ require("dotenv").config();
 // removing the bypass below.
 const ALLOW_ALL_STORES = process.env.ALLOW_ALL_STORES !== "false";
 
-// Get all Users
+// Get all Users (admin only - enforced by the route)
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.find();
+        const users = await User.find()
+            .select("-password -verificationToken -verificationTokenExpires -resetPasswordToken -resetPasswordExpires")
+            .sort({ createdAt: -1 });
         res.status(200).json(users);
     } catch (error) {
-        console.error("GetAllUsers Error:", error);
+        console.error("GetAllUsers Error:", error.message);
         res.status(500).json({ message: "Failed to fetch users" });
     }
 };
@@ -81,25 +124,42 @@ exports.getAllPublicStores = async (req, res) => {
     }
 };
 
-// Get User By ID
+// Get User By ID (self or admin only)
 exports.getUserById = async (req, res) => {
     const { id } = req.params;
 
+    if (!isObjectId(id)) {
+        return res.status(400).json({ message: "Invalid user id." });
+    }
+    if (String(req.user.id) !== String(id) && req.user.role !== "admin") {
+        return res.status(403).json({ message: "You can only view your own account." });
+    }
+
     try {
-        const user = await User.findById(id);
+        const user = await User.findById(id).select(PUBLIC_USER_FIELDS);
         if (!user) return res.status(404).json({ message: "User not found." });
 
         res.status(200).json(user);
     } catch (error) {
-        console.error("GetUserById Error:", error);
+        console.error("GetUserById Error:", error.message);
         res.status(500).json({ message: "Failed to fetch user" });
     }
 };
 
-// Update User
+// Update User (self or admin only; sensitive fields are admin-only)
 exports.updateUser = async (req, res) => {
     const { id } = req.params;
-    const updates = { ...req.body };
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+
+    if (!isObjectId(id)) {
+        return res.status(400).json({ message: "Invalid user id." });
+    }
+
+    const isSelf = String(req.user.id) === String(id);
+    const isAdmin = req.user.role === "admin";
+    if (!isSelf && !isAdmin) {
+        return res.status(403).json({ message: "You can only update your own account." });
+    }
 
     try {
         const user = await User.findById(id);
@@ -107,81 +167,149 @@ exports.updateUser = async (req, res) => {
             return res.status(404).json({ message: "User not found." });
         }
 
-        // If updating profilePhoto
-        if (updates.profilePhoto) {
-            let photoToUpload;
+        const updates = {};
+        for (const field of SELF_EDITABLE_FIELDS) {
+            if (body[field] === undefined) continue;
 
-            // Determine string to upload
-            if (typeof updates.profilePhoto === "object" && updates.profilePhoto.url) {
-                photoToUpload = updates.profilePhoto.url;
-            } else if (typeof updates.profilePhoto === "string") {
-                photoToUpload = updates.profilePhoto;
-            } else {
-                return res.status(400).json({ message: "Invalid profilePhoto format." });
+            if (field === "username") {
+                const result = usernameField(body.username);
+                if (result.error) return res.status(400).json({ message: result.error });
+                updates.username = result.value;
+                continue;
             }
 
+            if (field === "profilePhoto") {
+                const photoInput =
+                    typeof body.profilePhoto === "string"
+                        ? body.profilePhoto
+                        : body.profilePhoto?.url;
 
-            // Upload new photo
-            const uploaded = await cloudinary.uploader.upload(photoToUpload, {
-                folder: "users",
-            });
+                if (!photoInput) {
+                    return res.status(400).json({ message: "Invalid profilePhoto format." });
+                }
 
-            updates.profilePhoto = {
-                url: uploaded.secure_url,
-                public_id: uploaded.public_id,
-            };
+                let uploadSource;
+                try {
+                    uploadSource = normalizeImagePayload(photoInput);
+                } catch (err) {
+                    return res.status(400).json({ message: err.message });
+                }
+
+                const uploaded = await cloudinary.uploader.upload(uploadSource, {
+                    folder: "users",
+                });
+                updates.profilePhoto = {
+                    url: uploaded.secure_url,
+                    public_id: uploaded.public_id,
+                };
+                continue;
+            }
+
+            const value = stringField(body[field]);
+            if (value === null) {
+                return res.status(400).json({ message: `Invalid value for ${field}.` });
+            }
+            updates[field] = value;
         }
 
-        // Update user with new fields
-        const updatedUser = await User.findByIdAndUpdate(id, updates, {
-            new: true,
-            runValidators: true,
-        });
+        if (isAdmin) {
+            if (body.role !== undefined) {
+                if (typeof body.role !== "string" || !["user", "admin"].includes(body.role)) {
+                    return res.status(400).json({ message: "Invalid role." });
+                }
+                if (isSelf) {
+                    return res.status(403).json({ message: "You cannot change your own role." });
+                }
+                updates.role = body.role;
+            }
 
-        // Sync verification status if updated
+            if (body.isUserVerified !== undefined) {
+                if (typeof body.isUserVerified !== "boolean") {
+                    return res.status(400).json({ message: "isUserVerified must be a boolean." });
+                }
+                updates.isUserVerified = body.isUserVerified;
+            }
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: "No permitted fields were supplied." });
+        }
+
+        const previousPhotoPublicId =
+            updates.profilePhoto && user.profilePhoto?.public_id
+                ? user.profilePhoto.public_id
+                : null;
+
+        Object.assign(user, updates);
+        await user.save();
+
+        if (previousPhotoPublicId) {
+            cloudinary.uploader.destroy(previousPhotoPublicId).catch((err) => {
+                console.warn("Cloudinary destroy warning:", err.message);
+            });
+        }
+
         if (updates.isUserVerified !== undefined) {
             try {
-                // Update Community Listings
                 await Listing.updateMany(
                     { $or: [{ "sellerInfo.id": id }, { "sellerInfo._id": id }] },
                     { $set: { isUserVerified: updates.isUserVerified } }
                 );
-
-                // Update VIP Listings
                 await VipListing.updateMany(
                     { $or: [{ "sellerInfo.id": id }, { "sellerInfo._id": id }] },
                     { $set: { isUserVerified: updates.isUserVerified } }
                 );
-
-                // Update Community Products (if any in Product model)
                 await Product.updateMany(
-                    { $or: [{ "sellerId": id }, { "sellerInfo.id": id }] },
+                    { $or: [{ sellerId: id }, { "sellerInfo.id": id }] },
                     { $set: { isUserVerified: updates.isUserVerified } }
                 );
             } catch (syncError) {
-                console.error("Verification Sync Error:", syncError);
-                // We don't fail the whole request but log it
+                console.error("Verification Sync Error:", syncError.message);
             }
         }
 
-        res.status(200).json({ message: "User updated successfully", user: updatedUser });
+        const safeUser = await User.findById(id).select(
+            "-password -verificationToken -verificationTokenExpires -resetPasswordToken -resetPasswordExpires"
+        );
+        res.status(200).json({ message: "User updated successfully", user: safeUser });
     } catch (error) {
-        console.error("UpdateUser Error:", error);
+        console.error("UpdateUser Error:", error.message);
         if (error.code === 11000) {
             return res.status(400).json({ message: "Username is already taken. Please choose another one." });
+        }
+        if (error.name === "ValidationError") {
+            const first = Object.values(error.errors)[0];
+            return res.status(400).json({ message: first?.message || "Invalid user data." });
         }
         res.status(500).json({ message: "Failed to update user" });
     }
 };
 
-// Delete User
+// Delete User (self or admin only)
 exports.deleteUser = async (req, res) => {
     const { id } = req.params;
+
+    if (!isObjectId(id)) {
+        return res.status(400).json({ message: "Invalid user id." });
+    }
+
+    const isSelf = String(req.user.id) === String(id);
+    const isAdmin = req.user.role === "admin";
+    if (!isSelf && !isAdmin) {
+        return res.status(403).json({ message: "You can only delete your own account." });
+    }
 
     try {
         const user = await User.findById(id);
         if (!user) {
             return res.status(404).json({ message: "User not found." });
+        }
+
+        if (user.role === "admin") {
+            const adminCount = await User.countDocuments({ role: "admin" });
+            if (adminCount <= 1) {
+                return res.status(400).json({ message: "The last admin account cannot be deleted." });
+            }
         }
 
         // Delete profile photo from cloudinary if exists
@@ -206,13 +334,13 @@ exports.deleteUser = async (req, res) => {
 
             console.log(`Cleaned up listings for deleted user: ${id}`);
         } catch (cleanupErr) {
-            console.error("Listing Cleanup Error:", cleanupErr);
+            console.error("Listing Cleanup Error:", cleanupErr.message);
         }
 
         await User.findByIdAndDelete(id);
         res.status(200).json({ message: "User deleted successfully" });
     } catch (error) {
-        console.error("DeleteUser Error:", error);
+        console.error("DeleteUser Error:", error.message);
         res.status(500).json({ message: "Failed to delete user" });
     }
 };
@@ -221,7 +349,12 @@ exports.deleteUser = async (req, res) => {
 exports.getUserStore = async (req, res) => {
     const { identifier } = req.params;
 
+    if (typeof identifier !== "string" || identifier.length < 1 || identifier.length > 100) {
+        return res.status(400).json({ message: "Invalid store identifier." });
+    }
+
     try {
+        const safeIdentifier = escapeRegex(identifier);
         // 1. Find user by either _id or username
         let user;
         console.log(`[StoreAccess] Fetching store for identifier: ${identifier}`);
@@ -232,7 +365,7 @@ exports.getUserStore = async (req, res) => {
             }
             if (!user) {
                 user = await User.findOne({
-                    username: { $regex: new RegExp(`^${identifier}$`, 'i') }
+                    username: { $regex: new RegExp(`^${safeIdentifier}$`, 'i') }
                 }).select("-password -email -phone -whatsapp");
             }
             if (!user && identifier.length === 10) {
@@ -240,7 +373,7 @@ exports.getUserStore = async (req, res) => {
                     $expr: {
                         $regexMatch: {
                             input: { $toString: "$_id" },
-                            regex: identifier + "$",
+                            regex: safeIdentifier + "$",
                             options: "i"
                         }
                     }

@@ -9,10 +9,14 @@ const {
 } = require("../Controller/userController");
 
 const authMiddleware = require("../Middleware/auth");
+const adminMiddleware = require("../Middleware/admin");
+const { escapeRegex } = require("../utils/security");
+const User = require("../Models/User");
 
 const router = express.Router();
 
-router.get("/", authMiddleware, getAllUsers);
+// Admin only: directory of every account
+router.get("/", authMiddleware, adminMiddleware, getAllUsers);
 
 // Get All Public Stores (Public)
 router.get("/public/all-stores", getAllPublicStores);
@@ -20,28 +24,33 @@ router.get("/public/all-stores", getAllPublicStores);
 // Get User Store (Public)
 router.get("/public/store/:identifier", getUserStore);
 
-// Get User by ID
+// Get User by ID (self or admin)
 router.get("/:id", authMiddleware, getUserById);
 
-// Update User by ID
+// Update User by ID (self or admin)
 router.put("/:id", authMiddleware, updateUser);
 
-// Check username availability
-router.get("/check-username/:username", authMiddleware, (req, res, next) => {
+// Check username availability (authenticated)
+router.get("/check-username/:username", authMiddleware, async (req, res) => {
     const { username } = req.params;
-    const User = require("../Models/User");
-    User.findOne({ username: { $regex: new RegExp(`^${username}$`, "i") } })
-        .then(user => {
-            if (user) {
-                return res.status(200).json({ available: false, message: "Username is already taken" });
-            }
-            res.status(200).json({ available: true });
-        })
-        .catch(err => res.status(500).json({ message: "Error checking username" }));
+    if (typeof username !== "string" || username.length < 3 || username.length > 30) {
+        return res.status(400).json({ message: "Invalid username." });
+    }
+
+    try {
+        const user = await User.findOne({
+            username: { $regex: new RegExp(`^${escapeRegex(username)}$`, "i") },
+        }).select("_id");
+        return res.status(200).json({
+            available: !user,
+            message: user ? "Username is already taken" : "Username is available",
+        });
+    } catch {
+        return res.status(500).json({ message: "Error checking username" });
+    }
 });
 
-// Delete User by ID
+// Delete User by ID (self or admin)
 router.delete("/:id", authMiddleware, deleteUser);
 
 module.exports = router;
-

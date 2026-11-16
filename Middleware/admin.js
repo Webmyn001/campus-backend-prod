@@ -1,23 +1,15 @@
-const User = require("../Models/User");
+// Requires authMiddleware to have run first. Role is read from the freshly
+// loaded user document, never from client-supplied data.
+const adminMiddleware = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
 
-const adminMiddleware = async (req, res, next) => {
-    try {
-        // Assuming authMiddleware has already run and attached user to req
-        if (!req.user) {
-            return res.status(401).json({ message: "Authentication required." });
-        }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ success: false, message: "Access denied. Admin role required." });
+  }
 
-        const user = await User.findById(req.user.id);
-
-        if (!user || user.role !== "admin") {
-            return res.status(403).json({ message: "Access denied. Admin role required." });
-        }
-
-        next();
-    } catch (error) {
-        console.error("Admin Middleware Error:", error);
-        res.status(500).json({ message: "Server error" });
-    }
+  return next();
 };
 
 module.exports = adminMiddleware;

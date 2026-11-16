@@ -40,9 +40,9 @@ const trackVisit = async (req, res) => {
  */
 const trackEvent = async (req, res) => {
   try {
-    const { productId, sellerId, eventType, type } = req.body;
-    
-    if (!productId || !sellerId || !eventType || !type) {
+    const { productId, eventType, type } = req.body || {};
+
+    if (!productId || !eventType || !type) {
       return res.status(400).json({ success: false, message: "Missing tracking data" });
     }
 
@@ -50,43 +50,50 @@ const trackEvent = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid product ID" });
     }
 
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    if (!["view", "whatsapp"].includes(eventType)) {
+      return res.status(400).json({ success: false, message: "Invalid event type" });
+    }
 
-    // 1. Update the Main Model (atomic increment)
     let Model;
     if (type === "viplisting") Model = VipListing;
     else if (type === "listing") Model = Listing;
     else if (type === "admin-product") Model = Product;
     else return res.status(400).json({ success: false, message: "Invalid type" });
 
-    const updateField = eventType === "view" ? { views: 1 } : { whatsappClicks: 1 };
-    
-    await Model.findByIdAndUpdate(productId, { $inc: updateField });
-
-    // 2. Update the Daily Analytic snapshot (upsert)
-    // Resolve sellerId if it's an object or a string placeholder
-    let resolvedSellerId = sellerId;
-    if (typeof sellerId === "object" && sellerId !== null) {
-      resolvedSellerId = sellerId.id || sellerId._id;
+    const item = await Model.findById(productId).select("_id sellerInfo sellerId");
+    if (!item) {
+      return res.status(404).json({ success: false, message: "Item not found" });
     }
 
-    if (typeof resolvedSellerId === "string") {
-      resolvedSellerId = resolvedSellerId.trim();
-      if (resolvedSellerId === "official_campuscrave_id" || resolvedSellerId === "admin") {
-        resolvedSellerId = "654a1a000000000000000000";
+    // Derive the seller from the stored document; never trust a seller id
+    // supplied by the browser.
+    let resolvedSellerId = null;
+    if (type === "admin-product") {
+      resolvedSellerId = item.sellerId ? String(item.sellerId) : null;
+    } else {
+      const sellerInfo = item.sellerInfo || {};
+      const sellerId = sellerInfo.id || sellerInfo._id || sellerInfo;
+      if (sellerId && typeof sellerId === "object") {
+        resolvedSellerId = sellerId.id || sellerId._id || null;
+      } else if (sellerId) {
+        resolvedSellerId = String(sellerId);
       }
     }
 
-    if (resolvedSellerId === "undefined" || resolvedSellerId === "null" || !resolvedSellerId) {
-      resolvedSellerId = null;
-    }
+    const updateField = eventType === "view" ? { views: 1 } : { whatsappClicks: 1 };
+    await Model.findByIdAndUpdate(productId, { $inc: updateField });
+
+    const today = new Date().toISOString().split("T")[0];
 
     if (resolvedSellerId && mongoose.Types.ObjectId.isValid(resolvedSellerId)) {
       await Analytics.findOneAndUpdate(
         { date: today, productId: productId },
-        { 
+        {
           $inc: updateField,
-          $set: { sellerId: new mongoose.Types.ObjectId(resolvedSellerId), type: type } 
+          $set: {
+            sellerId: new mongoose.Types.ObjectId(resolvedSellerId),
+            type,
+          },
         },
         { upsert: true, new: true }
       );
@@ -94,7 +101,7 @@ const trackEvent = async (req, res) => {
 
     res.json({ success: true, message: "Event tracked" });
   } catch (err) {
-    console.error("Tracking Error:", err);
+    console.error("Tracking Error:", err.message);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -321,7 +328,8 @@ const getGlobalStats = async (req, res) => {
  */
 const getTrendingItems = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 12;
+    const requested = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 50) : 12;
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
@@ -388,12 +396,8 @@ const getTrendingItems = async (req, res) => {
 
     res.json({ success: true, data: result });
   } catch (err) {
-    console.error("❌ DETAILED GET TRENDING ERROR:", {
-      message: err.message,
-      stack: err.stack,
-      query: req.query
-    });
-    res.status(500).json({ success: false, message: "Server error", internalError: err.message });
+    console.error("Get Trending Items Error:", err.message);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

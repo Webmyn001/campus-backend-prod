@@ -5,6 +5,7 @@ const VipListing = require("../Models/vipListing");
 const Listing = require("../Models/Listing1");
 const Subscription = require("../Models/Subscription");
 const mongoose = require("mongoose");
+const sendEmail = require("../utils/sendEmail");
 const {
   enqueueBulkEmails,
   processBulkEmailQueue,
@@ -40,7 +41,7 @@ exports.sendBulkEmail = async (req, res) => {
     });
   } catch (error) {
     console.error("Bulk Email Error:", error);
-    res.status(500).json({ message: "Failed to queue bulk emails", error: error.message });
+    res.status(500).json({ message: "Failed to queue bulk emails" });
   }
 };
 
@@ -58,7 +59,7 @@ exports.continueBulkEmailQueue = async (req, res) => {
     });
   } catch (error) {
     console.error("Continue Bulk Email Queue Error:", error);
-    res.status(500).json({ message: "Failed to process bulk email queue", error: error.message });
+    res.status(500).json({ message: "Failed to process bulk email queue" });
   }
 };
 
@@ -74,56 +75,19 @@ exports.getKeepAliveStatus = async (req, res) => {
         });
     } catch (error) {
         console.error("Get KeepAlive Status Error:", error);
-        return res.status(500).json({ status: "error", message: error.message });
+        return res.status(500).json({ status: "error", message: "Failed to load keepalive status" });
     }
 };
 
 exports.getBulkEmailQueueStatus = async (req, res) => {
   try {
     const BulkEmailQueue = require("../Models/BulkEmailQueue");
-    
+
     const totalQueued = await BulkEmailQueue.countDocuments({ status: "pending" });
     const totalSent = await BulkEmailQueue.countDocuments({ status: "sent" });
     const totalFailed = await BulkEmailQueue.countDocuments({ status: "failed" });
 
     const today = new Date();
-exports.getBulkEmailQueueStatus = async (req, res) => {
-    try {
-        const BulkEmailQueue = require("../Models/BulkEmailQueue");
-    
-        const totalQueued = await BulkEmailQueue.countDocuments({ status: "pending" });
-        const totalSent = await BulkEmailQueue.countDocuments({ status: "sent" });
-        const totalFailed = await BulkEmailQueue.countDocuments({ status: "failed" });
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const sentToday = await BulkEmailQueue.countDocuments({
-            status: "sent",
-            sentAt: { $gte: today },
-        });
-
-        const DAILY_LIMIT = Number(process.env.BULK_EMAIL_DAILY_LIMIT) || 60;
-        const remainingCapacity = Math.max(0, DAILY_LIMIT - sentToday);
-
-        return res.status(200).json({
-            status: "success",
-            queue: {
-                pending: totalQueued,
-                sent: totalSent,
-                failed: totalFailed,
-                total: totalQueued + totalSent + totalFailed,
-            },
-            today: {
-                sent: sentToday,
-                dailyLimit: DAILY_LIMIT,
-                remainingCapacity,
-            },
-        });
-    } catch (error) {
-        console.error("Get Bulk Email Queue Status Error:", error);
-        res.status(500).json({ message: "Failed to get queue status", error: error.message });
-    }
-};
     today.setHours(0, 0, 0, 0);
     const sentToday = await BulkEmailQueue.countDocuments({
       status: "sent",
@@ -148,8 +112,8 @@ exports.getBulkEmailQueueStatus = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get Bulk Email Queue Status Error:", error);
-    res.status(500).json({ message: "Failed to get queue status", error: error.message });
+    console.error("Get Bulk Email Queue Status Error:", error.message);
+    res.status(500).json({ message: "Failed to get queue status" });
   }
 };
 
@@ -174,7 +138,7 @@ exports.updatePromoStatus = async (req, res) => {
         });
     } catch (error) {
         console.error("Update Promo Status Error:", error);
-        res.status(500).json({ message: "Failed to update promo status", error: error.message });
+        res.status(500).json({ message: "Failed to update promo status" });
     }
 };
 
@@ -359,6 +323,6 @@ exports.sendTestReport = async (req, res) => {
         });
     } catch (error) {
         console.error("Send Test Report Error:", error);
-        res.status(500).json({ message: "Failed to send test report", error: error.message });
+        res.status(500).json({ message: "Failed to send test report" });
     }
 };

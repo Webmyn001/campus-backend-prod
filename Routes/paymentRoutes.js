@@ -9,14 +9,27 @@ const {
   createManualSubscription
 } = require("../Controller/paymentController");
 const { checkSubscriptionActive } = require("../Middleware/checkSubscription");
+const authMiddleware = require("../Middleware/auth");
+const adminMiddleware = require("../Middleware/admin");
+const rateLimit = require("../Middleware/rateLimit");
 
 const router = express.Router();
 
-router.post("/verify-payment", verifyPayment);
-// router.post("/webhook/flutterwave", flutterwaveWebhook);
-router.post("/webhook/paystack", paystackWebhook);
-router.get("/premium-content", checkSubscriptionActive, (req, res) => {
-  const now = new Date();
+const paymentVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  prefix: "payment-verify",
+});
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  prefix: "paystack-webhook",
+});
+
+router.post("/verify-payment", authMiddleware, paymentVerifyLimiter, verifyPayment);
+router.post("/webhook/paystack", webhookLimiter, paystackWebhook);
+
+router.get("/premium-content", authMiddleware, checkSubscriptionActive, (req, res) => {
   const subscription = req.subscription;
 
   res.status(200).json({
@@ -24,15 +37,19 @@ router.get("/premium-content", checkSubscriptionActive, (req, res) => {
     message: "Welcome to premium content!",
     plan: subscription.plan,
     expiresAt: subscription.expiresAt,
-    status: subscription.expiresAt >= now ? "active" : "expired",
+    status: "active",
   });
 });
-router.get("/userplans", getAllSubscriptions);
-router.get("/status", getUserStatus);
+
+// Admin-only subscriber management
+router.get("/userplans", authMiddleware, adminMiddleware, getAllSubscriptions);
+router.delete("/subscribers/:id", authMiddleware, adminMiddleware, deleteSubscription);
+router.post("/subscribers/manual", authMiddleware, adminMiddleware, createManualSubscription);
+
+// Authenticated users can read their own subscription status (admins may pass ?id=)
+router.get("/status", authMiddleware, getUserStatus);
+
+// Public campaign promo flag
 router.get("/promo-status", getPromoStatus);
-
-router.delete("/subscribers/:id", deleteSubscription);
-
-router.post("/subscribers/manual", createManualSubscription);
 
 module.exports = router;

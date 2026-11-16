@@ -1,5 +1,27 @@
 const Job = require("../Models/Job");
 const axios = require("axios");
+const { isObjectId } = require("../utils/security");
+
+const JOB_FIELDS = [
+    "title",
+    "company",
+    "location",
+    "type",
+    "category",
+    "description",
+    "applyUrl",
+    "salary",
+    "source",
+    "isFeatured",
+];
+
+function pickJobFields(body) {
+    const data = {};
+    for (const field of JOB_FIELDS) {
+        if (body && body[field] !== undefined) data[field] = body[field];
+    }
+    return data;
+}
 
 // --- Helper: Fetch from Remotive (Excellent for Tech/Design/Marketing Gigs) ---
 const syncRemotive = async () => {
@@ -130,7 +152,7 @@ exports.fetchJobsFromAPI = async (req, res) => {
         });
     } catch (err) {
         console.error("❌ Job Sync Error:", err.message);
-        if (res) res.status(500).json({ success: false, error: err.message });
+        if (res) res.status(500).json({ success: false, message: "Job sync failed" });
     }
 };
 
@@ -140,7 +162,8 @@ exports.getApprovedJobs = async (req, res) => {
         const jobs = await Job.find({ status: "approved" }).sort({ postedAt: -1 });
         res.status(200).json(jobs);
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Get Approved Jobs Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to load jobs." });
     }
 };
 
@@ -150,7 +173,8 @@ exports.getPendingJobs = async (req, res) => {
         const jobs = await Job.find({ status: "pending" }).sort({ postedAt: -1 });
         res.status(200).json(jobs);
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Get Pending Jobs Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to load jobs." });
     }
 };
 
@@ -158,8 +182,11 @@ exports.getPendingJobs = async (req, res) => {
 exports.updateJobStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body; // 'approved', 'rejected'
+        const { status } = req.body || {};
 
+        if (!isObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid job id." });
+        }
         if (!["approved", "rejected"].includes(status)) {
             return res.status(400).json({ message: "Invalid status." });
         }
@@ -169,7 +196,8 @@ exports.updateJobStatus = async (req, res) => {
 
         res.status(200).json({ success: true, message: `Job ${status} successfully.`, job });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Update Job Status Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to update job." });
     }
 };
 
@@ -177,14 +205,22 @@ exports.updateJobStatus = async (req, res) => {
 exports.editJob = async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        if (!isObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid job id." });
+        }
 
-        const job = await Job.findByIdAndUpdate(id, updates, { new: true });
+        const updates = pickJobFields(req.body);
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ success: false, message: "No permitted fields were supplied." });
+        }
+
+        const job = await Job.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
         if (!job) return res.status(404).json({ message: "Job not found." });
 
         res.status(200).json({ success: true, message: "Job updated successfully.", job });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Edit Job Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to update job." });
     }
 };
 
@@ -192,22 +228,27 @@ exports.editJob = async (req, res) => {
 exports.deleteJob = async (req, res) => {
     try {
         const { id } = req.params;
+        if (!isObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid job id." });
+        }
         await Job.findByIdAndDelete(id);
         res.status(200).json({ success: true, message: "Job deleted successfully." });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Delete Job Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to delete job." });
     }
 };
 
 // Admin Action: Manual Post
 exports.createManualJob = async (req, res) => {
     try {
-        const jobData = req.body;
+        const jobData = pickJobFields(req.body);
         // Manual jobs are approved by default
         const job = await Job.create({ ...jobData, status: "approved" });
         res.status(201).json({ success: true, job });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Create Manual Job Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to create job." });
     }
 };
 
@@ -215,9 +256,13 @@ exports.createManualJob = async (req, res) => {
 exports.trackJobView = async (req, res) => {
     try {
         const { id } = req.params;
+        if (!isObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid job id." });
+        }
         await Job.findByIdAndUpdate(id, { $inc: { views: 1 } });
         res.status(200).json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error("Track Job View Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to record view." });
     }
 };

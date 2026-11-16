@@ -6,22 +6,26 @@ const {
   updateReview,
   deleteReview,
 } = require("../Controller/reviewController");
+const authMiddleware = require("../Middleware/auth");
+const adminMiddleware = require("../Middleware/admin");
+const rateLimit = require("../Middleware/rateLimit");
 
 const router = express.Router();
 
-// Create a new review
-router.post("/", createReview);
+const submitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  prefix: "review-submit",
+  message: "Too many reviews submitted. Please try again later.",
+});
 
-// Get all reviews
+// Public reviews
+router.post("/", submitLimiter, createReview);
 router.get("/", getAllReviews);
-
-// Get a single review by ID
 router.get("/:id", getReviewById);
 
-// Update a review by ID
-router.put("/:id", updateReview);
-
-// Delete a review by ID
-router.delete("/:id", deleteReview);
+// Moderation
+router.put("/:id", authMiddleware, adminMiddleware, updateReview);
+router.delete("/:id", authMiddleware, adminMiddleware, deleteReview);
 
 module.exports = router;

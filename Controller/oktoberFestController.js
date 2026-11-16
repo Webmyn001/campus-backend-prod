@@ -305,11 +305,12 @@ exports.verifyStorePayment = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ verifyStorePayment error:", err);
-    const status = err.status || 500;
+    const status = Number(err.status) || 500;
+    const safeMessage = status >= 400 && status < 500 ? err.message : "Server error";
     res.status(status).json({
       success: false,
       code: err.code || "SERVER_ERROR",
-      message: err.message || "Server error",
+      message: safeMessage,
     });
   }
 };
@@ -808,7 +809,7 @@ exports.adminCreateSaleProduct = async (req, res) => {
     res.status(201).json({ success: true, product });
   } catch (err) {
     console.error("❌ oktoberFest adminCreateSaleProduct error:", err);
-    res.status(500).json({ success: false, message: err.message || "Server error" });
+    res.status(500).json({ success: false, message: "Could not create sale product" });
   }
 };
 

@@ -5,19 +5,25 @@ const {
   getContactById,
   deleteContact,
 } = require("../Controller/contactController");
+const authMiddleware = require("../Middleware/auth");
+const adminMiddleware = require("../Middleware/admin");
+const rateLimit = require("../Middleware/rateLimit");
 
 const router = express.Router();
 
-// Create a new contact request
-router.post("/", createContact);
+const submitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: "contact-submit",
+  message: "Too many messages sent. Please try again later.",
+});
 
-// Get all contact requests
-router.get("/", getAllContacts);
+// Create a new contact request (public)
+router.post("/", submitLimiter, createContact);
 
-// Get a single contact request by ID
-router.get("/:id", getContactById);
-
-// Delete a contact request by ID
-router.delete("/:id", deleteContact);
+// Admin-only inbox
+router.get("/", authMiddleware, adminMiddleware, getAllContacts);
+router.get("/:id", authMiddleware, adminMiddleware, getContactById);
+router.delete("/:id", authMiddleware, adminMiddleware, deleteContact);
 
 module.exports = router;

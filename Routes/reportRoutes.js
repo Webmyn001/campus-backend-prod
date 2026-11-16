@@ -5,19 +5,25 @@ const {
   getAllReports,
   deleteReport,
 } = require("../Controller/reportController");
+const authMiddleware = require("../Middleware/auth");
+const adminMiddleware = require("../Middleware/admin");
+const rateLimit = require("../Middleware/rateLimit");
 
 const router = express.Router();
 
-// Create a new contact request
-router.post("/", createReport);
+const submitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: "report-submit",
+  message: "Too many reports submitted. Please try again later.",
+});
 
-// Get all contact requests
-router.get("/", getAllReports);
+// Create a new scam report (public)
+router.post("/", submitLimiter, createReport);
 
-// Get a single contact request by ID
-router.get("/:id", getReportById);
-
-// Delete a contact request by ID
-router.delete("/:id", deleteReport);
+// Admin-only inbox (contains contact details)
+router.get("/", authMiddleware, adminMiddleware, getAllReports);
+router.get("/:id", authMiddleware, adminMiddleware, getReportById);
+router.delete("/:id", authMiddleware, adminMiddleware, deleteReport);
 
 module.exports = router;

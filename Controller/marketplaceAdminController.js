@@ -507,7 +507,7 @@ exports.processPayout = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ processPayout error:", err.message);
-    res.status(400).json({ success: false, message: err.message || "Server error" });
+    res.status(400).json({ success: false, message: "Could not process payout" });
   }
 };
 

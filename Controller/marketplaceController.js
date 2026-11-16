@@ -556,11 +556,12 @@ exports.verifyMarketplacePayment = async (req, res) => {
     res.status(201).json({ success: true, message: "Payment verified. Order created.", order });
   } catch (err) {
     console.error("❌ verifyMarketplacePayment error:", err);
-    const status = err.status || 500;
+    const status = Number(err.status) || 500;
+    const safeMessage = status >= 400 && status < 500 ? err.message : "Server error";
     res.status(status).json({
       success: false,
       code: err.code || "SERVER_ERROR",
-      message: err.message || "Server error",
+      message: safeMessage,
     });
   }
 };
@@ -951,7 +952,7 @@ exports.savePayoutDetails = async (req, res) => {
     res.status(200).json({ success: true, message: "Payout details saved", recipient: updated.payoutRecipient });
   } catch (err) {
     console.error("❌ savePayoutDetails error:", err.message);
-    res.status(400).json({ success: false, message: err.message || "Could not save payout details" });
+    res.status(400).json({ success: false, message: "Could not save payout details" });
   }
 };
 
@@ -961,7 +962,7 @@ exports.getBanksList = async (_req, res) => {
     res.status(200).json({ success: true, banks });
   } catch (err) {
     console.error("❌ getBanksList error:", err.message);
-    res.status(400).json({ success: false, message: err.message || "Could not load banks" });
+    res.status(400).json({ success: false, message: "Could not load banks" });
   }
 };
 
