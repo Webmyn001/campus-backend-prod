@@ -3,14 +3,17 @@
 const crypto = require("crypto");
 
 const PLATFORM_COMMISSION_RATE = 0.03; // 3% of selling price
+const FREE_FEE_THRESHOLD = 3000; // items below ₦3,000 are sold with no platform fee
 
 function roundToKobo(n) {
   return Math.round(n * 100) / 100;
 }
 
 // priceAmount is the item's selling price in NGN.
+// Items from ₦3,000 upward pay 3%; cheaper items are fee-free.
 function computePlatformFee(priceAmount) {
   const price = Number(priceAmount) || 0;
+  if (price < FREE_FEE_THRESHOLD) return 0;
   return roundToKobo(price * PLATFORM_COMMISSION_RATE);
 }
 
@@ -44,6 +47,7 @@ function generateOrderNumber() {
 
 module.exports = {
   PLATFORM_COMMISSION_RATE,
+  FREE_FEE_THRESHOLD,
   roundToKobo,
   computePlatformFee,
   computeSellerAmount,

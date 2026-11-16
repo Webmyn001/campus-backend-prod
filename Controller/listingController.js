@@ -25,6 +25,8 @@ const CREATE_FIELDS = [
   "campaign",
   "campaignId",
   "priceAmount",
+  "originalPriceAmount",
+  "quantity",
   "workingCondition",
   "conditionNote",
   "pickupLocation",
@@ -79,9 +81,14 @@ function buildUpdate(body, fields) {
       if (value !== undefined) update[field] = value;
       continue;
     }
-    if (field === "priceAmount" || field === "deliveryFee") {
+    if (field === "priceAmount" || field === "deliveryFee" || field === "originalPriceAmount") {
       const value = Number(body[field]);
       if (Number.isFinite(value) && value >= 0) update[field] = value;
+      continue;
+    }
+    if (field === "quantity") {
+      const value = Number(body[field]);
+      if (Number.isInteger(value) && value >= 0 && value <= 9999) update[field] = value;
       continue;
     }
     if (field === "deliveryAvailable") {
@@ -148,6 +155,18 @@ exports.createListing = async (req, res) => {
     return res.status(400).json({ message: "Description must be at least 10 characters long." });
   }
 
+  const listedPrice = Number(payload.price) || Number(payload.priceAmount) || 0;
+  if (payload.originalPriceAmount !== undefined) {
+    if (!(payload.originalPriceAmount > listedPrice)) {
+      return res.status(400).json({ message: "Original price must be higher than the selling price." });
+    }
+  }
+  if (payload.quantity === undefined) payload.quantity = 1;
+  if (payload.quantity < 1) {
+    return res.status(400).json({ message: "Quantity must be at least 1." });
+  }
+  if (!payload.priceAmount && listedPrice > 0) payload.priceAmount = listedPrice;
+
   try {
     const images = req.body.images ? await normalizeListingImages(req.body.images, "listings") : [];
 
@@ -188,7 +207,7 @@ exports.createListing = async (req, res) => {
 exports.getAllListings = async (req, res) => {
   try {
     const query = req.user && req.user.role === "admin" ? {} : { status: { $ne: "pending" } };
-    const listings = await Listing.find(query);
+    const listings = await Listing.find(query).sort({ postedAt: -1 });
     res.status(200).json(listings);
   } catch (error) {
     console.error("Get Listings Error:", error.message);
@@ -276,7 +295,34 @@ exports.updateListing = async (req, res) => {
     const updates = buildUpdate(req.body, UPDATE_FIELDS);
     if (admin) Object.assign(updates, buildUpdate(req.body, ADMIN_ONLY_FIELDS));
 
-    if (!admin) {
+    if (updates.price !== undefined) {
+      const parsed = Number(updates.price);
+      if (Number.isFinite(parsed) && parsed >= 0) updates.priceAmount = parsed;
+    }
+
+    if (updates.quantity !== undefined) updates.soldOut = updates.quantity <= 0;
+
+    const nextPrice =
+      updates.priceAmount !== undefined
+        ? updates.priceAmount
+        : Number(listing.priceAmount ?? listing.price) || 0;
+    const nextOriginal =
+      updates.originalPriceAmount !== undefined
+        ? updates.originalPriceAmount
+        : listing.originalPriceAmount;
+    if (nextOriginal !== undefined && nextOriginal !== null && !(nextOriginal > nextPrice)) {
+      return res
+        .status(400)
+        .json({ message: "Original price must be higher than the selling price." });
+    }
+
+    // Marking an item sold / changing stock is stock management, not a content
+    // change, so the owner doesn't have to wait for re-approval.
+    const stockOnly =
+      Object.keys(updates).length > 0 &&
+      Object.keys(updates).every((key) => key === "soldOut" || key === "quantity");
+
+    if (!admin && !stockOnly) {
       updates.status = "pending";
       updates.isUserVerified = listing.isUserVerified;
     }
@@ -350,10 +396,10 @@ exports.getMyListings = async (req, res) => {
     const [communityListings, featuredListings] = await Promise.all([
       Listing.find({
         $or: [{ "sellerInfo.id": userId }, { "sellerInfo._id": userId }, { sellerInfo: userId }],
-      }).sort({ createdAt: -1 }),
+      }).sort({ postedAt: -1 }),
       VipListing.find({
         $or: [{ "sellerInfo.id": userId }, { "sellerInfo._id": userId }, { sellerInfo: userId }],
-      }).sort({ createdAt: -1 }),
+      }).sort({ postedAt: -1 }),
     ]);
 
     res.status(200).json({ featured: featuredListings, community: communityListings });

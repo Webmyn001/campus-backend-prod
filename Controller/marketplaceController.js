@@ -39,14 +39,15 @@ function buildSellerInfo(user) {
   };
 }
 
-async function activeCampaignFor({ campaignId, institutionCode }) {
-  const now = new Date();
+async function activeCampaignFor({ campaignId, institutionCode, saleType = "final_year" }) {
   const base = {};
   if (campaignId && mongoose.Types.ObjectId.isValid(String(campaignId))) base._id = campaignId;
-  else if (institutionCode) base.$or = [{ institutionCode: institutionCode.toUpperCase() }, { institutionName: { $regex: new RegExp(`^${institutionCode}$`, "i") } }];
-  else return null;
+  else if (institutionCode) {
+    base.saleType = saleType;
+    base.$or = [{ institutionCode: institutionCode.toUpperCase() }, { institutionName: { $regex: new RegExp(`^${institutionCode}$`, "i") } }];
+  } else return null;
 
-  const candidates = await Campaign.find({ ...base, saleType: "final_year" }).sort({ createdAt: -1 });
+  const candidates = await Campaign.find(base).sort({ createdAt: -1 });
   for (const c of candidates) {
     if (c.effectiveStatus() === "active") return c;
   }
@@ -65,11 +66,10 @@ function notify(to, subject, html) {
 // ============================================================
 exports.getCampaigns = async (req, res) => {
   try {
-    const now = new Date();
-    const campaigns = await Campaign.find({
-      saleType: "final_year",
-      $nor: [{ status: "paused" }],
-    }).sort({ startDate: -1 });
+    const { saleType } = req.query;
+    const query = { $nor: [{ status: "paused" }] };
+    if (saleType) query.saleType = saleType;
+    const campaigns = await Campaign.find(query).sort({ startDate: -1 });
     const detailed = await Promise.all(
       campaigns.map(async (c) => {
         const inst = c.institutionId
@@ -119,6 +119,8 @@ exports.createListing = async (req, res) => {
     conditionNote,
     description,
     sellingPrice,
+    originalPriceAmount,
+    quantity,
     images,
     pickupLocation,
     deliveryAvailable,
@@ -126,6 +128,7 @@ exports.createListing = async (req, res) => {
     deliveryArrangement,
     campaignId,
     institutionCode,
+    saleType,
   } = req.body;
 
   try {
@@ -156,6 +159,24 @@ exports.createListing = async (req, res) => {
         .json({ success: false, message: "Please enter a valid selling price" });
     }
 
+    const qty = quantity === undefined || quantity === "" ? 1 : Number(quantity);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 9999) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Quantity must be a whole number between 1 and 9999" });
+    }
+
+    let originalPrice;
+    if (originalPriceAmount !== undefined && originalPriceAmount !== "" && originalPriceAmount !== null) {
+      originalPrice = Number(originalPriceAmount);
+      if (!isFinite(originalPrice) || originalPrice <= priceAmount) {
+        return res.status(400).json({
+          success: false,
+          message: "Original price must be higher than the discounted price",
+        });
+      }
+    }
+
     // Electrical categories must state whether the item actually works
     const cat = category || "Other Goods";
     if (["Electronics", "Appliances"].includes(cat)) {
@@ -174,7 +195,7 @@ exports.createListing = async (req, res) => {
     }
 
     // Resolve an active campaign (OAU today, others later - never hard-coded)
-    const campaign = await activeCampaignFor({ campaignId, institutionCode });
+    const campaign = await activeCampaignFor({ campaignId, institutionCode, saleType });
     if (!campaign || !campaign.isAcceptingNewListings()) {
       return res.status(400).json({
         success: false,
@@ -205,6 +226,8 @@ exports.createListing = async (req, res) => {
       category: category || "Other Goods",
       price: String(priceAmount), // display compat with existing product cards
       priceAmount,
+      originalPriceAmount: originalPrice,
+      quantity: qty,
       condition: condition || "Used - Good",
       workingCondition: workingCondition || "",
       conditionNote: conditionNote || "",
@@ -218,7 +241,7 @@ exports.createListing = async (req, res) => {
       isUserVerified: !!user.isUserVerified,
       isManaged: false,
       status: "pending",
-      saleType: "final_year",
+      saleType: campaign.saleType || "final_year",
       institution: campaign.institutionName || (institution ? institution.name : ""),
       institutionCode: campaign.institutionCode || (institution ? institution.code : ""),
       institutionId: campaign.institutionId || (institution ? institution._id : undefined),
@@ -253,10 +276,11 @@ exports.getListings = async (req, res) => {
       page = 1,
       limit = 20,
       campaign,
+      saleType = "final_year",
     } = req.query;
 
     const query = {
-      saleType: "final_year",
+      saleType: ["final_year", "convocation"].includes(saleType) ? saleType : "final_year",
       status: "approved",
       listingState: "active",
     };
@@ -322,7 +346,7 @@ exports.getListingById = async (req, res) => {
         },
       });
     }
-    if (!listing || listing.saleType !== "final_year") {
+    if (!listing || !["final_year", "convocation"].includes(listing.saleType)) {
       return res.status(404).json({ message: "Listing not found" });
     }
     res.status(200).json({ success: true, listing });
@@ -337,7 +361,7 @@ exports.getMyListings = async (req, res) => {
   try {
     const userId = req.user.id;
     const mine = await Listing.find({
-      saleType: "final_year",
+      saleType: { $in: ["final_year", "convocation"] },
       $or: [{ "sellerInfo.id": userId }, { "sellerInfo._id": userId }, { "sellerInfo": userId }],
     }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, listings: mine });
@@ -366,7 +390,7 @@ exports.updateMyListingPrice = async (req, res) => {
     }
 
     const listing = await Listing.findById(id);
-    if (!listing || listing.saleType !== "final_year") {
+    if (!listing || !["final_year", "convocation"].includes(listing.saleType)) {
       return res.status(404).json({ success: false, message: "Listing not found" });
     }
 
@@ -423,10 +447,23 @@ async function buildOrderFromVerifiedTx({ tx, buyer, listing, deliveryMethod, de
     throw err;
   }
 
-  // Atomically reserve the listing so it can't be purchased twice
+  // Atomically take one unit out of stock. The listing only closes once the
+  // last unit is gone, so multi-quantity listings stay buyable.
   const reserved = await Listing.findOneAndUpdate(
-    { _id: listing._id, listingState: "active" },
-    { $set: { listingState: "reserved" } },
+    {
+      _id: listing._id,
+      listingState: "active",
+      $expr: { $gt: [{ $ifNull: ["$quantity", 1] }, 0] },
+    },
+    [
+      { $set: { quantity: { $subtract: [{ $ifNull: ["$quantity", 1] }, 1] } } },
+      {
+        $set: {
+          soldOut: { $lte: ["$quantity", 0] },
+          listingState: { $cond: [{ $lte: ["$quantity", 0] }, "sold", "active"] },
+        },
+      },
+    ],
     { new: true }
   );
   if (!reserved) {
@@ -526,7 +563,7 @@ exports.verifyMarketplacePayment = async (req, res) => {
     const note = typeof deliveryNote === "string" ? deliveryNote.slice(0, 300) : "";
 
     const listing = await Listing.findById(listingId);
-    if (!listing || listing.saleType !== "final_year" || listing.status !== "approved" || listing.listingState !== "active") {
+    if (!listing || !["final_year", "convocation"].includes(listing.saleType) || listing.status !== "approved" || listing.listingState !== "active") {
       return res.status(409).json({ success: false, code: "ALREADY_BOUGHT", message: "Sorry, this item is no longer available" });
     }
 
@@ -583,11 +620,6 @@ exports.handleMarketplaceWebhook = async (event) => {
         await MarketplaceOrder.findByIdAndUpdate(order._id, {
           $set: { paymentStatus: "verified", orderStatus: "processing" },
         });
-        // Best-effort reservation
-        await Listing.findOneAndUpdate(
-          { _id: order.listingId, listingState: "active" },
-          { $set: { listingState: "reserved" } }
-        );
       }
       return { handled: true, action: "order_verified" };
     }
@@ -635,12 +667,17 @@ exports.handleMarketplaceWebhook = async (event) => {
           orderStatus: "seller_paid",
         },
       });
-      // Mark the listing sold forever (history preserved, not deleted)
+      // The purchase already took the unit out of stock; just close the
+      // listing when that was the last one (history preserved, not deleted).
       const order = await MarketplaceOrder.findById(payout.orderId);
       if (order) {
-        await Listing.findByIdAndUpdate(order.listingId, {
-          $set: { listingState: "sold", soldOut: true },
-        });
+        await Listing.findOneAndUpdate(
+          {
+            _id: order.listingId,
+            $expr: { $lte: [{ $ifNull: ["$quantity", 1] }, 0] },
+          },
+          { $set: { listingState: "sold", soldOut: true } }
+        );
       }
       return { handled: true, action: "transfer_paid" };
     }

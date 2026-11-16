@@ -70,7 +70,7 @@ const listingSchema = new mongoose.Schema({
   // (all optional -> existing community listings are unaffected)
   saleType: {
     type: String,
-    enum: ["regular", "final_year"],
+    enum: ["regular", "final_year", "convocation"],
     default: "regular",
     index: true,
   },
@@ -82,6 +82,10 @@ const listingSchema = new mongoose.Schema({
   // Numeric selling price for marketplace items (existing `price` stays a String
   // for backward compatibility; all server-side money math uses priceAmount).
   priceAmount: { type: Number, min: 0, index: true },
+  // Optional "was" price so sellers can show a discount (priceAmount is what buyers pay).
+  originalPriceAmount: { type: Number, min: 0 },
+  // Units available. Missing on legacy listings means a single unique item.
+  quantity: { type: Number, default: 1, min: 0 },
   // Electrical category honesty (Electronics/Appliances require these)
   workingCondition: { type: String, trim: true },
   conditionNote: { type: String, trim: true },

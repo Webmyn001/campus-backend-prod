@@ -17,6 +17,17 @@ require("dotenv").config();
 
 const PLATFORM_SUPPORT_EMAIL = process.env.PLATFORM_SUPPORT_EMAIL || "campuscrave0001@gmail.com";
 
+// Date-only values from the admin form mean the whole day, so an end date of
+// "2026-12-05" must stay live until 23:59 rather than expiring at midnight.
+function parseCampaignDate(value, endOfDay = false) {
+  const d = new Date(value);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (endOfDay) d.setHours(23, 59, 59, 999);
+    else d.setHours(0, 0, 0, 0);
+  }
+  return d;
+}
+
 function parsePage(q) {
   return { page: Math.max(1, parseInt(q.page, 10) || 1), limit: Math.min(100, Math.max(1, parseInt(q.limit, 10) || 30)) };
 }
@@ -63,9 +74,13 @@ async function attachSellerPayout(order) {
 // ============================================================
 exports.getAllListings = async (req, res) => {
   try {
-    const { status, approval, page: pg, limit: lm } = req.query;
+    const { status, approval, saleType, page: pg, limit: lm } = req.query;
     const { page, limit } = parsePage({ page: pg, limit: lm });
-    const query = { saleType: "final_year" };
+    const query = {
+      saleType: ["final_year", "convocation"].includes(saleType)
+        ? saleType
+        : { $in: ["final_year", "convocation"] },
+    };
     if (approval) query.status = approval; // pending | approved | rejected
     if (status) query.listingState = status; // active | reserved | sold | archived | suspended
 
@@ -204,7 +219,7 @@ exports.activateListing = async (req, res) => {
   try {
     const updated = await Listing.findByIdAndUpdate(
       req.params.id,
-      { $set: { listingState: "active" } },
+      { $set: { listingState: "active", soldOut: false }, $max: { quantity: 1 } },
       { new: true }
     );
     if (!updated) return res.status(404).json({ success: false, message: "Listing not found" });
@@ -219,7 +234,7 @@ exports.markSoldListing = async (req, res) => {
   try {
     const updated = await Listing.findByIdAndUpdate(
       req.params.id,
-      { $set: { listingState: "sold", soldOut: true } },
+      { $set: { listingState: "sold", soldOut: true, quantity: 0 } },
       { new: true }
     );
     if (!updated) return res.status(404).json({ success: false, message: "Listing not found" });
@@ -350,8 +365,11 @@ exports.resolveDispute = async (req, res) => {
           },
         });
         await MarketplacePayout.updateMany({ orderId: order._id }, { $set: { status: "cancelled" } });
-        // Relist the item so the buyer can try again / it isn't stuck
-        await Listing.findByIdAndUpdate(order.listingId, { $set: { listingState: "active", soldOut: false } });
+        // Put the unit back on sale so it isn't stuck in "sold" state
+        await Listing.findByIdAndUpdate(order.listingId, [
+          { $set: { quantity: { $add: [{ $ifNull: ["$quantity", 0] }, 1] } } },
+          { $set: { listingState: "active", soldOut: false } },
+        ]);
       }
       notify(
         order.buyerEmail,
@@ -527,7 +545,10 @@ exports.markPayoutPaid = async (req, res) => {
     });
     const order = await MarketplaceOrder.findById(payout.orderId);
     if (order) {
-      await Listing.findByIdAndUpdate(order.listingId, { $set: { listingState: "sold", soldOut: true } });
+      await Listing.findOneAndUpdate(
+        { _id: order.listingId, $expr: { $lte: [{ $ifNull: ["$quantity", 1] }, 0] } },
+        { $set: { listingState: "sold", soldOut: true } }
+      );
     }
     res.status(200).json({ success: true, payout: updated });
   } catch (err) {
@@ -547,7 +568,10 @@ exports.completeOrder = async (req, res) => {
     const updated = await MarketplaceOrder.findByIdAndUpdate(order._id, {
       $set: { orderStatus: "completed" },
     }, { new: true });
-    await Listing.findByIdAndUpdate(order.listingId, { $set: { listingState: "sold", soldOut: true } });
+    await Listing.findOneAndUpdate(
+      { _id: order.listingId, $expr: { $lte: [{ $ifNull: ["$quantity", 1] }, 0] } },
+      { $set: { listingState: "sold", soldOut: true } }
+    );
     res.status(200).json({ success: true, order: updated });
   } catch (err) {
     console.error("❌ completeOrder error:", err);
@@ -679,8 +703,8 @@ exports.createCampaign = async (req, res) => {
       saleType: saleType || "final_year",
       tagline: tagline || "",
       description: description || "",
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: parseCampaignDate(startDate),
+      endDate: parseCampaignDate(endDate, true),
       status: status || "active",
     });
     res.status(201).json({ success: true, campaign: { ...campaign.toObject(), status: campaign.effectiveStatus() } });
@@ -697,7 +721,10 @@ exports.updateCampaign = async (req, res) => {
     const patch = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        patch[key] = key === "startDate" || key === "endDate" ? new Date(req.body[key]) : req.body[key];
+        patch[key] =
+          key === "startDate" || key === "endDate"
+            ? parseCampaignDate(req.body[key], key === "endDate")
+            : req.body[key];
       }
     }
     const campaign = await Campaign.findByIdAndUpdate(id, { $set: patch }, { new: true, runValidators: true });

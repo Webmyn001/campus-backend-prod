@@ -25,8 +25,9 @@ const campaignSchema = new mongoose.Schema({
   },
   saleType: {
     type: String,
-    enum: ["final_year"],
+    enum: ["final_year", "convocation"],
     default: "final_year",
+    index: true,
   },
   tagline: {
     type: String,
