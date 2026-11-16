@@ -49,19 +49,25 @@ function sellerIdOf(listing) {
 // Attach the seller's saved payout/bank details to an order for the admin to pay them.
 // The full account number is exposed because the admin must transfer funds to the seller.
 async function attachSellerPayout(order) {
-  if (!order || !order.sellerId || order.sellerPayout) return order;
+  if (!order || !order.sellerId) return order;
   try {
-    const seller = await User.findById(order.sellerId).select("email name payoutRecipient").catch(() => null);
-    if (seller && seller.payoutRecipient) {
-      const p = seller.payoutRecipient;
+    const seller = await User.findById(order.sellerId)
+      .select("email name phone whatsapp payoutRecipient")
+      .catch(() => null);
+    if (seller) {
       order = order.toObject ? order.toObject() : order;
       order.sellerEmail = seller.email || "";
-      order.sellerPayout = {
-        bankName: p.bankName || "",
-        accountNumber: p.accountNumber || "",
-        accountName: p.accountName || "",
-        hasRecipient: !!(p.recipientCode && p.accountName),
-      };
+      order.sellerPhone = seller.phone || "";
+      order.sellerWhatsapp = seller.whatsapp || "";
+      const p = seller.payoutRecipient;
+      order.sellerPayout = p
+        ? {
+            bankName: p.bankName || "",
+            accountNumber: p.accountNumber || "",
+            accountName: p.accountName || "",
+            hasRecipient: !!(p.recipientCode && p.accountName),
+          }
+        : { hasRecipient: false };
     }
   } catch (err) {
     console.error("❌ attachSellerPayout error:", err.message);
@@ -426,11 +432,13 @@ exports.getAllPayouts = async (req, res) => {
     const enriched = [];
     for (const p of payouts) {
       const item = p.toObject ? p.toObject() : p;
-      const seller = await User.findById(p.sellerId).select("name email payoutRecipient").catch(() => null);
+      const seller = await User.findById(p.sellerId).select("name email phone whatsapp payoutRecipient").catch(() => null);
       const order = await MarketplaceOrder.findById(p.orderId).select("orderNumber sellerAmount platformFee totalPaid deliveryFee priceAmount").catch(() => null);
       if (seller) {
         item.sellerName = seller.name || "";
         item.sellerEmail = seller.email || "";
+        item.sellerPhone = seller.phone || "";
+        item.sellerWhatsapp = seller.whatsapp || "";
       }
       if (seller && seller.payoutRecipient) {
         const r = seller.payoutRecipient;

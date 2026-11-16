@@ -346,7 +346,9 @@ exports.getListingById = async (req, res) => {
         },
       });
     }
-    if (!listing || !["final_year", "convocation"].includes(listing.saleType)) {
+    // Any approved listing can be inspected by the checkout page — community
+    // listings use the same escrow checkout as the campaign sales.
+    if (!listing || listing.status !== "approved") {
       return res.status(404).json({ message: "Listing not found" });
     }
     res.status(200).json({ success: true, listing });
@@ -526,13 +528,13 @@ async function buildOrderFromVerifiedTx({ tx, buyer, listing, deliveryMethod, de
      <p>Best regards,<br/>CampusCrave Team</p>`
   );
 
-  // Notify the platform admin so they know a final-year order needs coordination:
+  // Notify the platform admin so they know a paid order needs coordination:
   // they may need to help the buyer get the item, or refund + credit the seller.
   notify(
     PLATFORM_SUPPORT_EMAIL,
-    "New final-year purchase needs your attention — order #" + order.orderNumber,
+    "New marketplace purchase needs your attention — order #" + order.orderNumber,
     `<p>Hello Admin,</p>
-     <p>A new final-year marketplace order was just created and needs your attention.</p>
+     <p>A new marketplace order was just created and needs your attention.</p>
      <p><strong>Order:</strong> #${order.orderNumber}</p>
      <p><strong>Item:</strong> ${order.listingSnapshot.title}</p>
      <p><strong>Buyer:</strong> ${order.buyerName || order.buyerEmail || "—"} (${order.buyerEmail || "no email"})</p>
@@ -563,7 +565,14 @@ exports.verifyMarketplacePayment = async (req, res) => {
     const note = typeof deliveryNote === "string" ? deliveryNote.slice(0, 300) : "";
 
     const listing = await Listing.findById(listingId);
-    if (!listing || !["final_year", "convocation"].includes(listing.saleType) || listing.status !== "approved" || listing.listingState !== "active") {
+    // Community listings are payable too, so the gate is the listing's own
+    // state and a real price — not its sale type.
+    if (
+      !listing ||
+      listing.status !== "approved" ||
+      listing.listingState !== "active" ||
+      !(Number(listing.priceAmount) > 0)
+    ) {
       return res.status(409).json({ success: false, code: "ALREADY_BOUGHT", message: "Sorry, this item is no longer available" });
     }
 
