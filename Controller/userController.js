@@ -111,7 +111,7 @@ exports.getAllPublicStores = async (req, res) => {
             location_city: "Awo Hall, OAU",
             isUserVerified: true,
             views: officialViews,
-            profilePhoto: { url: "https://campuscrave.ng/campus-crave-logo.png" }
+            profilePhoto: { url: "https://campuscrave.com.ng/campus-crave-logo.png" }
         }];
 
         allUsers.sort((a, b) => (b.views || 0) - (a.views || 0));

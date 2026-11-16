@@ -3,7 +3,7 @@
 // platform never invents partner data. The UI labels anything with
 // source === "demo" as a demo listing.
 
-const PLACEHOLDER_IMAGE = "https://www.campuscrave.ng/og-default.jpg";
+const PLACEHOLDER_IMAGE = "https://campuscrave.com.ng/placeholder.svg";
 
 const DEMO_CAMPAIGN_NAME = "Demo Partner Preview";
 

@@ -3,19 +3,11 @@ const User = require("../Models/User");
 const Listing = require("../Models/Listing1");
 const VipListing = require("../Models/vipListing");
 const { escapeHtml, escapeRegex, isHttpsUrl } = require("../utils/security");
+const { clientBaseUrl } = require("../utils/clientUrl");
 
 const router = express.Router();
 
-const DEFAULT_CLIENT_URL = "https://www.campuscrave.ng";
-const DEFAULT_OG_IMAGE = "https://www.campuscrave.ng/og-default.jpg";
-
-function clientBaseUrl() {
-  const configured = process.env.CLIENT_URL;
-  if (configured && isHttpsUrl(configured)) {
-    return configured.replace(/\/+$/, "");
-  }
-  return DEFAULT_CLIENT_URL;
-}
+const DEFAULT_OG_IMAGE = "https://campuscrave.com.ng/campus-crave-logo.png";
 
 function safeImage(url) {
   return typeof url === "string" && isHttpsUrl(url) ? url : DEFAULT_OG_IMAGE;

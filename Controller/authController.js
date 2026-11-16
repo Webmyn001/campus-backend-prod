@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const cloudinary = require("../config/cloudinary");
 const { normalizeEmail, isNonEmptyString, sanitizeText } = require("../utils/security");
+const { clientBaseUrl } = require("../utils/clientUrl");
 
 // Generate JWT Token
 const generateToken = (userId) => {
@@ -109,7 +110,7 @@ exports.signup = async (req, res) => {
     });
 
     // Build verification link
-    const verificationUrl = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}&email=${email}`;
+    const verificationUrl = `${clientBaseUrl()}/verify-email?token=${verificationToken}&email=${email}`;
 
     // Send verification email
     await sendEmail(
@@ -238,8 +239,7 @@ exports.resendVerificationEmail = async (req, res) => {
     user.lastVerificationEmailSent = Date.now();
     await user.save();
 
-    const verificationUrl = `${process.env.CLIENT_URL}/verify-email?token=${user.verificationToken}&email=${email}`;
-    console.log(verificationUrl)
+    const verificationUrl = `${clientBaseUrl()}/verify-email?token=${user.verificationToken}&email=${email}`;
     await sendEmail(
       email,
       "Verify Your Email",
@@ -407,7 +407,7 @@ exports.forgotPassword = async (req, res) => {
     user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour expiry
     await user.save();
 
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}&email=${email}`;
+    const resetUrl = `${clientBaseUrl()}/reset-password?token=${resetToken}&email=${email}`;
 
     await sendEmail(
       email,
