@@ -9,6 +9,7 @@ const {
 } = require("../Controller/userController");
 
 const authMiddleware = require("../Middleware/auth");
+const { looksLikeWebsite, WEBSITE_USERNAME_MESSAGE } = require("../utils/username");
 const adminMiddleware = require("../Middleware/admin");
 const { escapeRegex } = require("../utils/security");
 const User = require("../Models/User");
@@ -35,6 +36,9 @@ router.get("/check-username/:username", authMiddleware, async (req, res) => {
     const { username } = req.params;
     if (typeof username !== "string" || username.length < 3 || username.length > 30) {
         return res.status(400).json({ message: "Invalid username." });
+    }
+    if (looksLikeWebsite(username)) {
+        return res.status(200).json({ available: false, reason: "website", message: WEBSITE_USERNAME_MESSAGE });
     }
 
     try {

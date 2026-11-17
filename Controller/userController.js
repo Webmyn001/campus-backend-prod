@@ -8,6 +8,7 @@ const Setting = require("../Models/Setting");
 const cloudinary = require("../config/cloudinary");
 const { escapeRegex, isObjectId, sanitizeText } = require("../utils/security");
 const { normalizeImagePayload } = require("../utils/images");
+const { looksLikeWebsite, WEBSITE_USERNAME_MESSAGE } = require("../utils/username");
 
 require("dotenv").config();
 
@@ -174,6 +175,9 @@ exports.updateUser = async (req, res) => {
             if (field === "username") {
                 const result = usernameField(body.username);
                 if (result.error) return res.status(400).json({ message: result.error });
+                if (result.value !== user.username && looksLikeWebsite(result.value)) {
+                    return res.status(400).json({ message: WEBSITE_USERNAME_MESSAGE });
+                }
                 updates.username = result.value;
                 continue;
             }
