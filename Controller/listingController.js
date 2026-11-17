@@ -6,7 +6,9 @@ const { escapeRegex, isObjectId } = require("../utils/security");
 const {
   getSellerId,
   isOwnerOrAdmin,
+  listingStateAfterRestock,
   normalizeListingImages,
+  publicMarketFilter,
   removeCloudinaryImages,
   text,
 } = require("../utils/listings");
@@ -168,16 +170,24 @@ exports.createListing = async (req, res) => {
   if (!payload.priceAmount && listedPrice > 0) payload.priceAmount = listedPrice;
 
   try {
-    const images = req.body.images ? await normalizeListingImages(req.body.images, "listings") : [];
-
     let isUserVerified = false;
     const sellerId = sellerInfo.id || sellerInfo._id;
     if (sellerId === "official_campuscrave_id") {
       isUserVerified = true;
     } else if (isObjectId(sellerId)) {
-      const user = await User.findById(sellerId).select("isUserVerified");
+      const user = await User.findById(sellerId).select("isUserVerified payoutRecipient");
       isUserVerified = user ? !!user.isUserVerified : false;
+      const payout = user && user.payoutRecipient;
+      const hasPayout = !!(payout && payout.recipientCode && payout.accountName);
+      if (req.user.role !== "admin" && listedPrice > 0 && !hasPayout) {
+        return res.status(400).json({
+          message: "Add your bank details on your dashboard before you post an item, so we can pay you when it sells.",
+          code: "PAYOUT_DETAILS_REQUIRED",
+        });
+      }
     }
+
+    const images = req.body.images ? await normalizeListingImages(req.body.images, "listings") : [];
 
     const listing = await Listing.create({
       ...payload,
@@ -206,7 +216,7 @@ exports.createListing = async (req, res) => {
 // Get all listings
 exports.getAllListings = async (req, res) => {
   try {
-    const query = req.user && req.user.role === "admin" ? {} : { status: { $ne: "pending" } };
+    const query = req.user && req.user.role === "admin" ? {} : publicMarketFilter();
     const listings = await Listing.find(query).sort({ postedAt: -1 });
     res.status(200).json(listings);
   } catch (error) {
@@ -325,6 +335,11 @@ exports.updateListing = async (req, res) => {
     if (!admin && !stockOnly) {
       updates.status = "pending";
       updates.isUserVerified = listing.isUserVerified;
+    }
+
+    if (updates.quantity !== undefined && updates.listingState === undefined) {
+      const restored = listingStateAfterRestock(listing.listingState, updates.quantity);
+      if (restored) updates.listingState = restored;
     }
 
     let replacedImages = false;

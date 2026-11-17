@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node --test tests/security.test.js tests/clientUrl.test.js tests/plans.test.js tests/partner.test.js tests/partnerModels.test.js tests/partnerApi.test.js",
+    "test": "node --test tests/security.test.js tests/clientUrl.test.js tests/plans.test.js tests/partner.test.js tests/partnerModels.test.js tests/partnerApi.test.js tests/marketStock.test.js",
     "start": "nodemon index.js",
     "seed:partner-demo": "node scripts/seedPartnerDemo.js"
   },

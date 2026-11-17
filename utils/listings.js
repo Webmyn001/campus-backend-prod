@@ -89,8 +89,25 @@ function text(value, maxLength) {
   return cleaned;
 }
 
+// Every approved listing (regular, final-year, convocation) stays on the public
+// market after its campaign ends, until its stock runs out.
+function publicMarketFilter() {
+  return {
+    status: { $nin: ["pending", "rejected"] },
+    soldOut: { $ne: true },
+    quantity: { $not: { $lte: 0 } },
+    listingState: { $nin: ["sold", "archived", "suspended"] },
+  };
+}
+
+function listingStateAfterRestock(currentState, nextQuantity) {
+  return currentState === "sold" && Number(nextQuantity) > 0 ? "active" : undefined;
+}
+
 module.exports = {
   MAX_IMAGES,
+  listingStateAfterRestock,
+  publicMarketFilter,
   getSellerId,
   isOwnerOrAdmin,
   normalizeListingImages,
