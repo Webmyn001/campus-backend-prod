@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { MAX_IMAGE_BYTES, normalizeImagePayload, validateImageCollection } = require("../utils/images");
 const {
   normalizeEmail,
   isObjectId,
@@ -55,6 +56,39 @@ test("hashIp is stable and salted", () => {
 
 test("escapeHtml encodes markup", () => {
   assert.equal(escapeHtml('<script>"x"</script>'), "&lt;script&gt;&quot;x&quot;&lt;/script&gt;");
+});
+
+const imagePayload = bytes => `data:image/png;base64,${Buffer.alloc(bytes).toString("base64")}`;
+
+test("four photos may use exactly 4 MB combined", () => {
+  assert.doesNotThrow(() => validateImageCollection(Array(4).fill(imagePayload(MAX_IMAGE_BYTES / 4))));
+});
+
+test("photo collection rejects combined size above 4 MB", () => {
+  assert.throws(() => validateImageCollection([imagePayload(MAX_IMAGE_BYTES / 2), imagePayload(MAX_IMAGE_BYTES / 2 + 1)]), /4 MB/);
+});
+
+test("photo collection rejects a fifth photo and non-array input", () => {
+  assert.throws(() => validateImageCollection(Array(5).fill(imagePayload(1))), /4 photos/);
+  assert.throws(() => validateImageCollection("not an array"), /array/);
+});
+
+test("single images reject oversized and unsupported uploads", () => {
+  assert.throws(() => normalizeImagePayload(imagePayload(MAX_IMAGE_BYTES + 1)), /4 MB/);
+  assert.throws(() => validateImageCollection(["data:image/svg+xml;base64,PHN2Zz4="]), /Only PNG/);
+});
+
+test("photo byte accounting handles base64 padding", () => {
+  assert.doesNotThrow(() => validateImageCollection([imagePayload(MAX_IMAGE_BYTES - 1), imagePayload(1)]));
+});
+
+test("invalid photo collections are rejected before any upload", async (t) => {
+  const cloudinary = require("../config/cloudinary");
+  const { normalizeListingImages } = require("../utils/listings");
+  const upload = t.mock.method(cloudinary.uploader, "upload", async () => { throw new Error("Unexpected upload"); });
+  await assert.rejects(normalizeListingImages([imagePayload(MAX_IMAGE_BYTES / 2), imagePayload(MAX_IMAGE_BYTES / 2 + 1)]), /4 MB/);
+  await assert.rejects(normalizeListingImages(Array(5).fill(imagePayload(1))), /4 images/);
+  assert.equal(upload.mock.callCount(), 0);
 });
 
 test("toSafeInt clamps to the provided range", () => {

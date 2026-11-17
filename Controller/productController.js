@@ -3,9 +3,9 @@ const User = require("../Models/User");
 const cloudinary = require("../config/cloudinary");
 const { isObjectId, escapeRegex } = require("../utils/security");
 const { text } = require("../utils/listings");
-const { normalizeImagePayload } = require("../utils/images");
+const { normalizeImagePayload, validateImageCollection } = require("../utils/images");
 
-const MAX_GALLERY = 8;
+const MAX_GALLERY = 3;
 const TYPES = ["admin-gadget", "admin-food", "community"];
 const AVAILABILITY = ["In Stock", "Low Stock", "Out of Stock"];
 
@@ -127,6 +127,9 @@ exports.createProduct = async (req, res) => {
 
     let mainImage;
     try {
+      const gallery = req.body.images === undefined ? [] : req.body.images;
+      if (!Array.isArray(gallery)) throw new Error("Images must be an array");
+      validateImageCollection([req.body.image, ...gallery]);
       mainImage = await uploadImage(req.body.image);
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
@@ -223,6 +226,18 @@ exports.updateProduct = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
 
     const updates = buildProductFields(req.body);
+
+    if (req.body.image !== undefined || req.body.images !== undefined) {
+      try {
+        const gallery = req.body.images === undefined
+          ? product.images.filter(image => image.url !== product.mainImage?.url)
+          : req.body.images;
+        if (!Array.isArray(gallery)) throw new Error("Images must be an array");
+        validateImageCollection([req.body.image || product.mainImage, ...gallery]);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+    }
 
     let newMainImage = null;
     if (req.body.image !== undefined && req.body.image !== null && req.body.image !== "") {

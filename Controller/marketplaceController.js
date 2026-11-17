@@ -9,6 +9,7 @@ const cloudinary = require("../config/cloudinary");
 const sendEmail = require("../utils/sendEmail");
 const paystack = require("../utils/paystack");
 const mkt = require("../utils/marketplace");
+const { normalizeListingImages } = require("../utils/listings");
 
 require("dotenv").config();
 
@@ -206,13 +207,11 @@ exports.createListing = async (req, res) => {
       ? await Institution.findById(campaign.institutionId).catch(() => null)
       : null;
 
-    let uploadedImages = [];
-    if (images && images.length) {
-      const uploadPromises = images.map((base64Image) =>
-        cloudinary.uploader.upload(base64Image, { folder: "final_year" })
-      );
-      const results = await Promise.all(uploadPromises);
-      uploadedImages = results.map((r) => ({ url: r.secure_url, public_id: r.public_id }));
+    let uploadedImages;
+    try {
+      uploadedImages = await normalizeListingImages(images || [], "final_year");
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
     }
     if (!uploadedImages.length) {
       return res.status(400).json({ success: false, message: "Please upload at least one photo" });

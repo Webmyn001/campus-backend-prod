@@ -1,8 +1,8 @@
 const cloudinary = require("../config/cloudinary");
 const { isHttpsUrl } = require("./security");
-const { normalizeImagePayload } = require("./images");
+const { normalizeImagePayload, validateImageCollection } = require("./images");
 
-const MAX_IMAGES = 8;
+const MAX_IMAGES = 4;
 
 function getSellerId(doc) {
   const info = doc && doc.sellerInfo;
@@ -41,6 +41,7 @@ async function normalizeListingImages(images, folder = "listings") {
     throw new Error(`A listing can have at most ${MAX_IMAGES} images.`);
   }
 
+  validateImageCollection(images);
   const output = [];
   for (const entry of images) {
     if (typeof entry === "string") {

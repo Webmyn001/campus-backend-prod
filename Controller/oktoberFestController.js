@@ -5,6 +5,7 @@ const Setting = require("../Models/Setting");
 const paystack = require("../utils/paystack");
 const sendEmail = require("../utils/sendEmail");
 const mkt = require("../utils/marketplace");
+const { normalizeImagePayload, validateImageCollection } = require("../utils/images");
 
 const CAMPAIGN_SETTING_KEY = "oktober_fest_campaign";
 const PLATFORM_SUPPORT_EMAIL = process.env.PLATFORM_SUPPORT_EMAIL || "campuscrave0001@gmail.com";
@@ -746,10 +747,15 @@ exports.adminCreateSaleProduct = async (req, res) => {
     const delivery = normalizeMaxDeliveryDays(maxDeliveryDays);
     if (delivery.error) return res.status(400).json({ success: false, message: delivery.error });
 
+    try {
+      if (images !== undefined && !Array.isArray(images)) throw new Error("Images must be an array");
+      validateImageCollection([image, ...(images || [])]);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     let mainImage = {};
     if (image && typeof image === "string") {
-      let imageData = image;
-      if (!imageData.startsWith("data:image")) imageData = `data:image/png;base64,${imageData}`;
+      const imageData = normalizeImagePayload(image);
       const upload = await require("../config/cloudinary").uploader.upload(imageData, { folder: "oktober_fest" });
       mainImage = { url: upload.secure_url, public_id: upload.public_id };
     }
@@ -761,12 +767,11 @@ exports.adminCreateSaleProduct = async (req, res) => {
     if (Array.isArray(images) && images.length) {
       const uploadable = images
         .filter((img) => typeof img === "string" && img.trim())
-        .slice(0, 2);
+        .slice(0, 3);
       if (uploadable.length) {
         const results = await Promise.all(
           uploadable.map((img) => {
-            let imgData = img;
-            if (!imgData.startsWith("data:image")) imgData = `data:image/png;base64,${imgData}`;
+            const imgData = normalizeImagePayload(img);
             return require("../config/cloudinary").uploader.upload(imgData, { folder: "oktober_fest" });
           })
         );
